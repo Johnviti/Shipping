@@ -1,0 +1,46 @@
+/* Estilos da página de administração */
+.card {
+    background: #fff;
+    border: 1px solid #ccd0d4;
+    border-radius: 4px;
+    margin-top: 20px;
+    padding: 20px;
+    position: relative;
+    box-shadow: 0 1px 1px rgba(0,0,0,.04);
+}
+
+.example-wrapper {
+    margin: 20px 0;
+    border-left: 4px solid #2271b1;
+    padding-left: 16px;
+    background: #f8f9fa;
+    padding: 15px;
+}
+
+.example-content {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    margin-top: 10px;
+}
+
+.example-image {
+    flex: 0 0 200px;
+    margin-right: 20px;
+}
+
+.example-text {
+    flex: 1;
+}
+
+.description {
+    color: #646970;
+    font-style: italic;
+}
+
+.example-image img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid #ddd;
+    padding: 5px;
+} 
