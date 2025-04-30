@@ -15,6 +15,7 @@
     padding-left: 16px;
     background: #f8f9fa;
     padding: 15px;
+    margin-bottom: 30px;
 }
 
 .example-content {
@@ -43,4 +44,56 @@
     height: auto;
     border: 1px solid #ddd;
     padding: 5px;
+}
+
+/* Estilos para o dashboard de relações de empilhamento */
+.wc-stackable-shipping-admin .nav-tab-wrapper {
+    margin-bottom: 20px;
+}
+
+.stacking-group {
+    background: #f9f9f9;
+    border: 1px solid #e5e5e5;
+    padding: 15px;
+    margin-bottom: 20px;
+    border-radius: 3px;
+}
+
+.stacking-group h3 {
+    margin-top: 0;
+    border-bottom: 1px solid #ddd;
+    padding-bottom: 10px;
+}
+
+.group-settings, .group-products, .group-rules {
+    margin-bottom: 15px;
+}
+
+.group-settings label {
+    display: inline-block;
+    margin-right: 15px;
+}
+
+.group-settings input[type="text"] {
+    width: 250px;
+}
+
+.stacking-controls {
+    margin: 20px 0;
+    display: flex;
+    justify-content: space-between;
+}
+
+/* Estilos para o selectize */
+.selectize-input {
+    padding: 8px;
+    min-height: 40px;
+}
+
+.selectize-dropdown {
+    z-index: 100;
+}
+
+.remove-group {
+    margin-top: 10px;
 } 
