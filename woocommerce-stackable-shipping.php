@@ -128,27 +128,153 @@ if (!class_exists('WC_Stackable_Shipping')) {
         /**
          * Modifica os pacotes de envio para aplicar o agrupamento
          */
-        public function modify_shipping_packages($packages) {
-            if (empty($packages)) {
-                return $packages;
-            }
-            
-            foreach ($packages as $package_key => $package) {
-                if (empty($package['contents'])) {
-                    continue;
+        /**
+             * Modifica os pacotes de envio para considerar produtos empilháveis
+             * 
+             * @param array $packages Os pacotes de envio
+             * @return array Os pacotes modificados
+             */
+            public function modify_shipping_packages($packages) {
+                $logger = function_exists('wc_get_logger') ? wc_get_logger() : null;
+                
+                if ($logger) {
+                    $logger->info('Modificando pacotes de envio', ['source' => 'stackable-shipping']);
+                    
+                    // Log dos pacotes originais
+                    $logger->info(
+                        'Pacotes originais antes da modificação', 
+                        [
+                            'source' => 'stackable-shipping',
+                            'packages_count' => count($packages),
+                            'packages' => $this->sanitize_packages_for_log($packages)
+                        ]
+                    );
                 }
                 
-                $stackable_groups = $this->group_stackable_products($package['contents']);
+                // Lógica de modificação dos pacotes
+                $modified_packages = array();
                 
-                // Se temos grupos empilháveis, modificamos as dimensões
-                if (!empty($stackable_groups)) {
-                    $packages[$package_key] = $this->apply_stacking_rules($package, $stackable_groups);
+                foreach ($packages as $package_key => $package) {
+                    // Verificar se o pacote tem conteúdo
+                    if (empty($package['contents'])) {
+                        $modified_packages[$package_key] = $package;
+                        continue;
+                    }
+                    
+                    // Agrupar produtos empilháveis
+                    $stackable_groups = $this->group_stackable_products($package['contents']);
+                    
+                    if ($logger) {
+                        $logger->info(
+                            'Grupos empilháveis identificados', 
+                            [
+                                'source' => 'stackable-shipping',
+                                'package_key' => $package_key,
+                                'groups_count' => count($stackable_groups),
+                                'groups' => $stackable_groups
+                            ]
+                        );
+                    }
+                    
+                    // Se não há grupos empilháveis, manter o pacote original
+                    if (empty($stackable_groups)) {
+                        $modified_packages[$package_key] = $package;
+                        continue;
+                    }
+                    
+                    // Aplicar regras de empilhamento ao pacote
+                    $modified_package = $this->apply_stacking_rules($package, $stackable_groups);
+                    $modified_packages[$package_key] = $modified_package;
+                    
+                    if ($logger) {
+                        $logger->info(
+                            'Pacote modificado após aplicação das regras de empilhamento', 
+                            [
+                                'source' => 'stackable-shipping',
+                                'package_key' => $package_key,
+                                'modified_package' => $this->sanitize_packages_for_log([$modified_package])[0]
+                            ]
+                        );
+                    }
                 }
+                
+                // Log dos pacotes após modificação
+                if ($logger) {
+                    $logger->info(
+                        'Pacotes após modificação', 
+                        [
+                            'source' => 'stackable-shipping',
+                            'packages_count' => count($modified_packages),
+                            'packages' => $this->sanitize_packages_for_log($modified_packages)
+                        ]
+                    );
+                }
+                
+                // Adicionar filtro para depuração
+                add_filter('woocommerce_cart_shipping_packages', function($packages) {
+                    error_log('DEBUG - Pacotes de envio: ' . print_r($packages, true));
+                    return $packages;
+                }, 9999); // Prioridade alta para executar após todas as modificações
+                
+                return $modified_packages;
             }
             
-            return $packages;
-        }
-
+            /**
+             * Sanitiza os pacotes para log (remove objetos complexos que podem causar problemas no log)
+             * 
+             * @param array $packages Os pacotes a serem sanitizados
+             * @return array Os pacotes sanitizados para log
+             */
+            private function sanitize_packages_for_log($packages) {
+                $sanitized = array();
+                
+                foreach ($packages as $key => $package) {
+                    $sanitized_package = array();
+                    
+                    // Copiar informações básicas
+                    if (isset($package['contents_cost'])) {
+                        $sanitized_package['contents_cost'] = $package['contents_cost'];
+                    }
+                    
+                    if (isset($package['applied_coupons'])) {
+                        $sanitized_package['applied_coupons'] = $package['applied_coupons'];
+                    }
+                    
+                    if (isset($package['destination'])) {
+                        $sanitized_package['destination'] = $package['destination'];
+                    }
+                    
+                    // Sanitizar conteúdos (produtos)
+                    if (isset($package['contents'])) {
+                        $sanitized_package['contents'] = array();
+                        
+                        foreach ($package['contents'] as $item_key => $item) {
+                            $product = isset($item['data']) ? $item['data'] : null;
+                            
+                            $sanitized_item = array(
+                                'key' => $item_key,
+                                'quantity' => isset($item['quantity']) ? $item['quantity'] : 0,
+                            );
+                            
+                            if ($product) {
+                                $sanitized_item['product_id'] = $product->get_id();
+                                $sanitized_item['name'] = $product->get_name();
+                                $sanitized_item['width'] = $product->get_width();
+                                $sanitized_item['length'] = $product->get_length();
+                                $sanitized_item['height'] = $product->get_height();
+                                $sanitized_item['weight'] = $product->get_weight();
+                            }
+                            
+                            $sanitized_package['contents'][] = $sanitized_item;
+                        }
+                    }
+                    
+                    $sanitized[$key] = $sanitized_package;
+                }
+                
+                return $sanitized;
+            }
+           
         /**
          * Agrupa produtos empilháveis do carrinho, considerando as relações definidas
          */
@@ -459,11 +585,14 @@ if (!class_exists('WC_Stackable_Shipping')) {
                 $base_length = 0;
                 $base_height = 0;
                 $additional_height = 0;
+                $additional_width = 0;
+                $additional_length = 0;
                 
                 // Calcular as dimensões base e peso total
                 foreach ($group as $cart_item_key => $item) {
                     $product = $item['data'];
                     $quantity = $item['quantity'];
+                    $product_id = $item['product_id'];
                     
                     // Usar o primeiro produto como base
                     if ($base_width == 0) {
@@ -472,21 +601,38 @@ if (!class_exists('WC_Stackable_Shipping')) {
                         $base_height = $product->get_height();
                     }
                     
-                    // Calcular altura adicional para empilhamento
-                    $increment = get_post_meta($item['product_id'], '_stack_height_increment', true);
-                    if (empty($increment)) {
-                        $increment = $product->get_height(); // Se não definido, usa altura total
+                    // Calcular incrementos para empilhamento
+                    $height_increment = get_post_meta($product_id, '_stack_height_increment', true);
+                    $width_increment = get_post_meta($product_id, '_stack_width_increment', true);
+                    $length_increment = get_post_meta($product_id, '_stack_length_increment', true);
+                    
+                    // Usar valores padrão se não estiverem definidos
+                    if (empty($height_increment)) {
+                        $height_increment = $product->get_height(); // Se não definido, usa altura total
                     }
                     
-                    // Adicionar altura para cada item após o primeiro
-                    $additional_height += ($quantity - 1) * floatval($increment);
+                    // Adicionar incrementos para cada item após o primeiro
+                    if ($quantity > 1) {
+                        $additional_height += ($quantity - 1) * floatval($height_increment);
+                        
+                        // Aplicar incrementos de largura e comprimento se definidos
+                        if (!empty($width_increment)) {
+                            $additional_width += ($quantity - 1) * floatval($width_increment);
+                        }
+                        
+                        if (!empty($length_increment)) {
+                            $additional_length += ($quantity - 1) * floatval($length_increment);
+                        }
+                    }
                     
                     // Somar o peso de todos os itens
                     $total_weight += $product->get_weight() * $quantity;
                 }
                 
-                // Altura final: altura base + incrementos adicionais
+                // Dimensões finais: base + incrementos adicionais
                 $final_height = $base_height + $additional_height;
+                $final_width = $base_width + $additional_width;
+                $final_length = $base_length + $additional_length;
                 
                 // Modificar os dados do produto virtual que representa o grupo
                 foreach ($group as $cart_item_key => $item) {
@@ -494,8 +640,8 @@ if (!class_exists('WC_Stackable_Shipping')) {
                     $product = $modified_package['contents'][$cart_item_key]['data'];
                     
                     // Atualizar dimensões apenas para cálculo de frete
-                    $product->set_width($base_width);
-                    $product->set_length($base_length);
+                    $product->set_width($final_width);
+                    $product->set_length($final_length);
                     $product->set_height($final_height);
                     $product->set_weight($total_weight);
                     
@@ -542,4 +688,4 @@ if (!class_exists('WC_Stackable_Shipping')) {
 
     // Inicializar o plugin
     new WC_Stackable_Shipping();
-} 
+}

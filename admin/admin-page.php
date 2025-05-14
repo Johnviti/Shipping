@@ -1,6 +1,8 @@
 <?php
 defined('ABSPATH') || exit;
 
+$logger = function_exists('wc_get_logger') ? wc_get_logger() : null;
+
 // Verifica permissões de acesso
 if (!current_user_can('manage_woocommerce')) {
     wp_die(__('Você não tem permissões suficientes para acessar esta página.', 'woocommerce-stackable-shipping'));
@@ -13,6 +15,8 @@ if (isset($_POST['save_stackable_products'])) {
         
         update_option('wc_stackable_shipping_products', $stackable_products_config);
         
+        if ($logger) $logger->info('Configurações de produtos empilháveis salvas', array('source' => 'stackable-shipping', 'data' => $stackable_products_config));
+        
         echo '<div class="notice notice-success"><p>' . __('Configurações de produtos empilháveis salvas com sucesso!', 'woocommerce-stackable-shipping') . '</p></div>';
     }
 }
@@ -24,7 +28,22 @@ if (isset($_POST['save_stacking_relationships'])) {
         
         update_option('wc_stackable_shipping_relationships', $stacking_groups);
         
+        if ($logger) $logger->info('Relações de empilhamento salvas', array('source' => 'stackable-shipping', 'data' => $stacking_groups));
+        
         echo '<div class="notice notice-success"><p>' . __('Relações de empilhamento salvas com sucesso!', 'woocommerce-stackable-shipping') . '</p></div>';
+    }
+}
+
+// Processar formulário de configurações
+if (isset($_POST['save_shipping_settings'])) {
+    if (isset($_POST['shipping_settings_nonce']) && wp_verify_nonce($_POST['shipping_settings_nonce'], 'save_shipping_settings')) {
+        $debug_enabled = isset($_POST['enable_debug']) ? 1 : 0;
+        
+        update_option('wc_stackable_shipping_debug_enabled', $debug_enabled);
+        
+        if ($logger) $logger->info('Configurações avançadas salvas', array('source' => 'stackable-shipping', 'debug_enabled' => $debug_enabled));
+        
+        echo '<div class="notice notice-success"><p>' . __('Configurações salvas com sucesso!', 'woocommerce-stackable-shipping') . '</p></div>';
     }
 }
 ?>
@@ -40,6 +59,7 @@ if (isset($_POST['save_stacking_relationships'])) {
         <a href="?page=wc-stackable-shipping&tab=products" class="nav-tab <?php echo empty($_GET['tab']) || $_GET['tab'] === 'products' ? 'nav-tab-active' : ''; ?>"><?php _e('Produtos Empilháveis', 'woocommerce-stackable-shipping'); ?></a>
         <a href="?page=wc-stackable-shipping&tab=relationships" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'relationships' ? 'nav-tab-active' : ''; ?>"><?php _e('Relações de Empilhamento', 'woocommerce-stackable-shipping'); ?></a>
         <a href="?page=wc-stackable-shipping&tab=examples" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'examples' ? 'nav-tab-active' : ''; ?>"><?php _e('Exemplos', 'woocommerce-stackable-shipping'); ?></a>
+        <a href="?page=wc-stackable-shipping&tab=settings" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'settings' ? 'nav-tab-active' : ''; ?>"><?php _e('Configurações', 'woocommerce-stackable-shipping'); ?></a>
     </nav>
 
     <?php
@@ -51,6 +71,9 @@ if (isset($_POST['save_stacking_relationships'])) {
             break;
         case 'examples':
             display_examples_tab();
+            break;
+        case 'settings':
+            display_settings_tab();
             break;
         default:
             display_products_tab();
@@ -493,6 +516,51 @@ function display_examples_tab() {
                 </div>
             </div>
         </div>
+    </div>
+    <?php
+}
+
+/**
+ * Exibe a aba de configurações
+ */
+function display_settings_tab() {
+    // Recuperar configurações salvas
+    $debug_enabled = get_option('wc_stackable_shipping_debug_enabled', 0);
+    ?>
+    <div class="card">
+        <h2><?php _e('Configurações Avançadas', 'woocommerce-stackable-shipping'); ?></h2>
+        
+        <form method="post" action="">
+            <?php wp_nonce_field('save_shipping_settings', 'shipping_settings_nonce'); ?>
+            
+            <table class="form-table">
+                <tr>
+                    <th scope="row">
+                        <?php _e('Depuração de Cálculos', 'woocommerce-stackable-shipping'); ?>
+                    </th>
+                    <td>
+                        <label for="enable_debug">
+                            <input type="checkbox" 
+                                   name="enable_debug" 
+                                   id="enable_debug" 
+                                   value="1" 
+                                   <?php checked($debug_enabled, 1); ?>>
+                            <?php _e('Ativar depuração de cálculos de dimensões para administradores', 'woocommerce-stackable-shipping'); ?>
+                        </label>
+                        <p class="description">
+                            <?php _e('Quando ativado, administradores verão informações detalhadas sobre o cálculo das dimensões dos produtos empilháveis no carrinho e checkout.', 'woocommerce-stackable-shipping'); ?>
+                        </p>
+                    </td>
+                </tr>
+            </table>
+            
+            <p class="submit">
+                <input type="submit" 
+                       name="save_shipping_settings" 
+                       class="button button-primary" 
+                       value="<?php esc_attr_e('Salvar Configurações', 'woocommerce-stackable-shipping'); ?>">
+            </p>
+        </form>
     </div>
     <?php
 }
