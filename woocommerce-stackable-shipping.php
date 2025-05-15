@@ -181,7 +181,6 @@ if (!class_exists('WC_Stackable_Shipping')) {
                         continue;
                     }
                     
-                    // Aplicar regras de empilhamento ao pacote
                     $modified_package = $this->apply_stacking_rules($package, $stackable_groups);
                     $modified_packages[$package_key] = $modified_package;
                     
@@ -209,9 +208,8 @@ if (!class_exists('WC_Stackable_Shipping')) {
                     );
                 }
                 
-                // Adicionar filtro para depuração
+                // Filtro simplificado apenas para produtos empilháveis individuais
                 add_filter('woocommerce_cart_shipping_packages', function($packages) {
-                    $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
                     $stackable_products_config = get_option('wc_stackable_shipping_products', array());
                     $cart = WC()->cart;
                     if (!$cart) return $packages;
@@ -219,34 +217,35 @@ if (!class_exists('WC_Stackable_Shipping')) {
                     $destination = isset($packages[0]['destination']) ? $packages[0]['destination'] : array();
                     $applied_coupons = $cart->get_applied_coupons();
                     $user = array('ID' => get_current_user_id());
-
+                
                     $pacotes = array();
                     $itens_nao_empilhaveis = array();
-
-                    // 1. Separar itens empilháveis e não empilháveis
+                    $itens_empilhaveis = array();
+                
+                    // Separar itens empilháveis e não empilháveis
                     foreach ($cart_items as $cart_item_key => $item) {
                         $product_id = $item['product_id'];
                         $is_stackable = isset($stackable_products_config[$product_id]['is_stackable']) && $stackable_products_config[$product_id]['is_stackable'];
-                        if (!$is_stackable) {
+                        if ($is_stackable) {
+                            $itens_empilhaveis[$cart_item_key] = $item;
+                        } else {
                             $itens_nao_empilhaveis[$cart_item_key] = $item;
                         }
                     }
-
-                    // 2. Processar cada grupo de empilhamento
-                    foreach ($stacking_groups as $group) {
-                        if (empty($group['products'])) continue;
-                        $produtos_grupo = $group['products'];
-                        $product_settings = isset($group['product_settings']) ? $group['product_settings'] : array();
-                        $itens_grupo = array();
-                        // Coletar itens do carrinho deste grupo
-                        foreach ($cart_items as $cart_item_key => $item) {
-                            $product_id = $item['product_id'];
-                            if (in_array($product_id, $produtos_grupo)) {
-                                $itens_grupo[$cart_item_key] = $item;
-                            }
-                        }
-                        // Enquanto houver itens, montar pacotes respeitando o máximo de cada produto
-                        while (count($itens_grupo) > 0) {
+                
+                    // Processar itens empilháveis
+                    foreach ($itens_empilhaveis as $cart_item_key => $item) {
+                        $product_id = $item['product_id'];
+                        $max_stack = isset($stackable_products_config[$product_id]['max_stack']) ? 
+                                    intval($stackable_products_config[$product_id]['max_stack']) : 1;
+                        $max_stack = max(1, $max_stack);
+                        
+                        $quantity = $item['quantity'];
+                        $full_groups = floor($quantity / $max_stack);
+                        $remainder = $quantity % $max_stack;
+                        
+                        // Criar pacotes completos
+                        for ($i = 0; $i < $full_groups; $i++) {
                             $pacote = array(
                                 'contents' => array(),
                                 'contents_cost' => 0,
@@ -254,33 +253,35 @@ if (!class_exists('WC_Stackable_Shipping')) {
                                 'user' => $user,
                                 'destination' => $destination,
                             );
-                            $algum_adicionado = false;
-                            foreach ($itens_grupo as $cart_item_key => $item) {
-                                $product_id = $item['product_id'];
-                                $settings = isset($product_settings[$product_id]) ? $product_settings[$product_id] : array('min'=>1,'max'=>1,'increment'=>0);
-                                $max = isset($settings['max']) ? intval($settings['max']) : 1;
-                                $qtd = $item['quantity'];
-                                if ($qtd > 0) {
-                                    $add = min($qtd, $max);
-                                    $novo_item = $item;
-                                    $novo_item['quantity'] = $add;
-                                    $pacote['contents'][$cart_item_key] = $novo_item;
-                                    $pacote['contents_cost'] += $item['data']->get_price() * $add;
-                                    $itens_grupo[$cart_item_key]['quantity'] -= $add;
-                                    if ($itens_grupo[$cart_item_key]['quantity'] <= 0) {
-                                        unset($itens_grupo[$cart_item_key]);
-                                    }
-                                    $algum_adicionado = true;
-                                }
-                            }
-                            if ($algum_adicionado) {
-                                $pacotes[] = $pacote;
-                            } else {
-                                break;
-                            }
+                            
+                            $novo_item = $item;
+                            $novo_item['quantity'] = $max_stack;
+                            $pacote['contents'][$cart_item_key] = $novo_item;
+                            $pacote['contents_cost'] += $item['data']->get_price() * $max_stack;
+                            
+                            $pacotes[] = $pacote;
+                        }
+                        
+                        // Criar pacote com o restante, se houver
+                        if ($remainder > 0) {
+                            $pacote = array(
+                                'contents' => array(),
+                                'contents_cost' => 0,
+                                'applied_coupons' => $applied_coupons,
+                                'user' => $user,
+                                'destination' => $destination,
+                            );
+                            
+                            $novo_item = $item;
+                            $novo_item['quantity'] = $remainder;
+                            $pacote['contents'][$cart_item_key] = $novo_item;
+                            $pacote['contents_cost'] += $item['data']->get_price() * $remainder;
+                            
+                            $pacotes[] = $pacote;
                         }
                     }
-                    // 3. Adicionar itens não empilháveis em um pacote separado
+                    
+                    // Adicionar itens não empilháveis em um pacote separado
                     if (!empty($itens_nao_empilhaveis)) {
                         $pacote = array(
                             'contents' => $itens_nao_empilhaveis,
@@ -294,9 +295,10 @@ if (!class_exists('WC_Stackable_Shipping')) {
                         }
                         $pacotes[] = $pacote;
                     }
+                    
                     return $pacotes;
                 }, 20);
-                
+
                 return $modified_packages;
             }
             
@@ -357,217 +359,184 @@ if (!class_exists('WC_Stackable_Shipping')) {
             }
            
         /**
-         * Agrupa produtos empilháveis do carrinho, considerando as relações definidas
+         * Agrupa produtos empilháveis para otimizar o cálculo de frete
+         * 
+         * @param array $contents Conteúdo do pacote
+         * @return array Grupos de produtos empilháveis
          */
-        private function group_stackable_products($cart_contents) {
-            $stackable_products = array();
-            $non_stackable = array();
-            $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
+        public function group_stackable_products($contents) {
+            $stackable_products = get_option('wc_stackable_shipping_products', array());
+            $groups = array();
             
-            // Primeiro separamos os produtos empilháveis dos não empilháveis
-            foreach ($cart_contents as $cart_item_key => $cart_item) {
-                $product_id = $cart_item['product_id'];
-                $is_stackable = get_post_meta($product_id, '_is_stackable', true);
+            // Identificar produtos empilháveis
+            foreach ($contents as $item_key => $item) {
+                $product = isset($item['data']) ? $item['data'] : null;
+                if (!$product) continue;
                 
-                if ('yes' === $is_stackable) {
-                    // Encontrar o grupo deste produto
-                    $product_group = null;
-                    foreach ($stacking_groups as $group) {
-                        if (isset($group['products']) && in_array($product_id, $group['products'])) {
-                            $product_group = $group;
-                            break;
-                        }
-                    }
-                    
-                    if ($product_group) {
-                        $stackable_products[$cart_item_key] = array(
-                            'item' => $cart_item,
-                            'group' => $product_group,
-                            'settings' => isset($product_group['product_settings'][$product_id]) ? 
-                                        $product_group['product_settings'][$product_id] : 
-                                        array('min' => 1, 'max' => 1, 'increment' => 0)
-                        );
-                    } else {
-                        $non_stackable[$cart_item_key] = $cart_item;
-                    }
-                } else {
-                    $non_stackable[$cart_item_key] = $cart_item;
-                }
-            }
-            
-            if (empty($stackable_products)) {
-                return array($non_stackable);
-            }
-            
-            // Agrupar produtos por grupo de empilhamento
-            $grouped_products = array();
-            foreach ($stackable_products as $cart_item_key => $product_data) {
-                $group_id = array_search($product_data['group'], $stacking_groups);
-                if (!isset($grouped_products[$group_id])) {
-                    $grouped_products[$group_id] = array();
-                }
-                $grouped_products[$group_id][] = $product_data;
-            }
-            
-            // Criar pacotes respeitando os limites individuais
-            $packages = array();
-            
-            foreach ($grouped_products as $group_id => $products) {
-                $group = $stacking_groups[$group_id];
-                $current_package = array();
-                $current_quantities = array();
-                
-                foreach ($products as $product_data) {
-                    $cart_item = $product_data['item'];
-                    $product_id = $cart_item['product_id'];
-                    $settings = $product_data['settings'];
-                    $remaining_quantity = $cart_item['quantity'];
-                    
-                    while ($remaining_quantity > 0) {
-                        // Verificar se podemos adicionar mais deste produto ao pacote atual
-                        $current_quantity = isset($current_quantities[$product_id]) ? $current_quantities[$product_id] : 0;
-                        
-                        if ($current_quantity >= $settings['max']) {
-                            // Se atingiu o máximo, criar novo pacote
-                            if (!empty($current_package)) {
-                                $packages[] = $current_package;
-                                $current_package = array();
-                                $current_quantities = array();
-                            }
-                        }
-                        
-                        // Calcular quanto podemos adicionar neste pacote
-                        $can_add = min(
-                            $remaining_quantity,
-                            $settings['max'] - $current_quantity
-                        );
-                        
-                        if ($can_add > 0) {
-                            // Adicionar ao pacote atual
-                            $current_package[$cart_item_key] = array(
-                                'item' => $cart_item,
-                                'quantity' => $can_add,
-                                'settings' => $settings
-                            );
-                            $current_quantities[$product_id] = $current_quantity + $can_add;
-                            $remaining_quantity -= $can_add;
-                        }
-                    }
-                }
-                
-                // Adicionar o último pacote do grupo se não estiver vazio
-                if (!empty($current_package)) {
-                    $packages[] = $current_package;
-                }
-            }
-            
-            // Adicionar produtos não empilháveis em pacotes separados
-            foreach ($non_stackable as $cart_item_key => $cart_item) {
-                $packages[] = array($cart_item_key => $cart_item);
-            }
-            
-            return $packages;
-        }
-
-        /**
-         * Aplica as regras de empilhamento aos pacotes
-         */
-        private function apply_stacking_rules($package, $stacking_groups) {
-            if (empty($package['contents'])) {
-                return $package;
-            }
-            
-            $modified_contents = array();
-            $total_height = 0;
-            $total_width = 0;
-            $total_length = 0;
-            $total_weight = 0;
-            
-            foreach ($package['contents'] as $cart_item_key => $cart_item) {
-                $product = $cart_item['data'];
                 $product_id = $product->get_id();
-                $quantity = $cart_item['quantity'];
+                $is_stackable = isset($stackable_products[$product_id]['is_stackable']) && $stackable_products[$product_id]['is_stackable'];
                 
-                // Obter configurações de empilhamento do produto
-                $product_settings = null;
-                
-                foreach ($stacking_groups as $group) {
-                    if (isset($group['products']) && in_array($product_id, $group['products'])) {
-                        $product_settings = isset($group['product_settings'][$product_id]) ? 
-                                          $group['product_settings'][$product_id] : 
-                                          array('min' => 1, 'max' => 1, 'increment' => 0);
-                        break;
+                if (!$is_stackable) {
+                    // Produtos não empilháveis são tratados individualmente
+                    for ($i = 0; $i < $item['quantity']; $i++) {
+                        $groups[] = array(
+                            $item_key => array(
+                                'item' => $item,
+                                'quantity' => 1,
+                                'settings' => array(
+                                    'min' => 1,
+                                    'max' => 1,
+                                    'increment' => 0,
+                                    'length_increment' => 0,
+                                    'width_increment' => 0
+                                )
+                            )
+                        );
                     }
+                    continue;
                 }
                 
-                if ($product_settings) {
-                    // Calcular dimensões com base nos incrementos
-                    $height = $product->get_height();
-                    $width = $product->get_width();
-                    $length = $product->get_length();
-                    
-                    // Aplicar incrementos apenas uma vez por grupo
-                    $height += $product_settings['increment'];
-                    $width += $product_settings['increment'];
-                    $length += $product_settings['increment'];
-                    
-                    $total_height = max($total_height, $height);
-                    $total_width = max($total_width, $width);
-                    $total_length = max($total_length, $length);
-                    $total_weight += $product->get_weight() * $quantity;
-                    
-                    // Atualizar dimensões do produto
-                    $product->set_height($height);
-                    $product->set_width($width);
-                    $product->set_length($length);
-                } else {
-                    // Produto não empilhável - usar dimensões originais
-                    $total_height = max($total_height, $product->get_height());
-                    $total_width = max($total_width, $product->get_width());
-                    $total_length = max($total_length, $product->get_length());
-                    $total_weight += $product->get_weight() * $quantity;
+                // Obter o máximo de empilhamento para este produto
+                $max_stack = isset($stackable_products[$product_id]['max_stack']) ? 
+                            intval($stackable_products[$product_id]['max_stack']) : 1;
+                
+                // Se max_stack for menor que 1, definir como 1
+                $max_stack = max(1, $max_stack);
+                
+                // Obter incrementos de dimensões
+                $height_increment = isset($stackable_products[$product_id]['height_increment']) ? 
+                                  floatval($stackable_products[$product_id]['height_increment']) : 0;
+                $length_increment = isset($stackable_products[$product_id]['length_increment']) ? 
+                                  floatval($stackable_products[$product_id]['length_increment']) : 0;
+                $width_increment = isset($stackable_products[$product_id]['width_increment']) ? 
+                                 floatval($stackable_products[$product_id]['width_increment']) : 0;
+                $weight_increment = isset($stackable_products[$product_id]['weight_increment']) ? 
+                                  floatval($stackable_products[$product_id]['weight_increment']) : 0;
+                
+                // Calcular quantos grupos completos e o restante
+                $quantity = $item['quantity'];
+                $full_groups = floor($quantity / $max_stack);
+                $remainder = $quantity % $max_stack;
+                
+                // Criar grupos completos
+                for ($i = 0; $i < $full_groups; $i++) {
+                    $groups[] = array(
+                        $item_key => array(
+                            'item' => $item,
+                            'quantity' => $max_stack,
+                            'settings' => array(
+                                'min' => $max_stack,
+                                'max' => $max_stack,
+                                'increment' => $height_increment,
+                                'length_increment' => $length_increment,
+                                'width_increment' => $width_increment,
+                                'weight_increment' => $weight_increment
+                            )
+                        )
+                    );
                 }
                 
-                $modified_contents[$cart_item_key] = $cart_item;
+                // Criar grupo com o restante, se houver
+                if ($remainder > 0) {
+                    $groups[] = array(
+                        $item_key => array(
+                            'item' => $item,
+                            'quantity' => $remainder,
+                            'settings' => array(
+                                'min' => $remainder,
+                                'max' => $remainder,
+                                'increment' => $height_increment,
+                                'length_increment' => $length_increment,
+                                'width_increment' => $width_increment
+                            )
+                        )
+                    );
+                }
             }
             
-            // Atualizar dimensões do pacote
-            $package['contents'] = $modified_contents;
-            $package['dimensions'] = array(
-                'height' => $total_height,
-                'width' => $total_width,
-                'length' => $total_length,
-                'weight' => $total_weight
-            );
-            
-            return $package;
+            return $groups;
         }
 
         /**
-         * Verifica se dois produtos podem ser empilhados juntos
+         * Aplica regras de empilhamento a um pacote
+         * 
+         * @param array $package Pacote original
+         * @param array $stackable_groups Grupos de produtos empilháveis
+         * @return array Pacote modificado
          */
-        private function can_stack_together($product_id_1, $product_id_2) {
-            if ($product_id_1 == $product_id_2) {
-                return true;
+        public function apply_stacking_rules($package, $stackable_groups) {
+            // Clonar o pacote para não modificar o original
+            $modified_package = $package;
+            
+            // Se não houver grupos empilháveis, retornar o pacote original
+            if (empty($stackable_groups)) {
+                return $modified_package;
             }
             
-            $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
+            // Limpar o conteúdo do pacote modificado
+            $modified_package['contents'] = array();
             
-            foreach ($stacking_groups as $group) {
-                $products = isset($group['products']) ? $group['products'] : array();
-                $rule = isset($group['stacking_rule']) ? $group['stacking_rule'] : 'any';
-                
-                if (in_array($product_id_1, $products) && in_array($product_id_2, $products)) {
-                    if ($rule === 'same_only' && $product_id_1 != $product_id_2) {
-                        return false;
+            // Processar cada grupo empilhável
+            foreach ($stackable_groups as $group) {
+                foreach ($group as $item_key => $item_data) {
+                    $item = $item_data['item'];
+                    $quantity = $item_data['quantity'];
+                    $settings = isset($item_data['settings']) ? $item_data['settings'] : array();
+                    
+                    // Aplicar modificações nas dimensões se necessário
+                    if ($quantity > 1 && isset($item['data']) && $item['data']) {
+                        $product = $item['data'];
+                        
+                        // Obter dimensões originais
+                        $original_height = $product->get_height();
+                        $original_length = $product->get_length();
+                        $original_width = $product->get_width();
+                        $original_weight = $product->get_weight();
+                        
+                        // Calcular novas dimensões com base nos incrementos
+                        $height_increment = isset($settings['increment']) ? floatval($settings['increment']) : 0;
+                        $length_increment = isset($settings['length_increment']) ? floatval($settings['length_increment']) : 0;
+                        $width_increment = isset($settings['width_increment']) ? floatval($settings['width_increment']) : 0;
+                        $weight_increment = isset($settings['weight_increment']) ? floatval($settings['weight_increment']) : 0;
+                        
+                        // Aplicar incrementos apenas se houver mais de um item
+                        if ($quantity > 1) {
+                            $new_height = $original_height + ($height_increment * ($quantity - 1));
+                            $new_length = $original_length + ($length_increment * ($quantity - 1));
+                            $new_width = $original_width + ($width_increment * ($quantity - 1));
+                            $new_weight = $original_weight + ($weight_increment * ($quantity - 1));
+                            
+                            // Criar uma cópia do produto para não afetar o original
+                            $modified_product = clone $product;
+                            $modified_product->set_height($new_height);
+                            $modified_product->set_length($new_length);
+                            $modified_product->set_width($new_width);
+                            $modified_product->set_weight($new_weight);
+                            
+                            // Substituir o produto no item
+                            $item['data'] = $modified_product;
+                        }
+                        
+                        // Sempre definir a quantidade como 1 para produtos empilháveis
+                        // Isso representa que fisicamente é um único pacote
+                        $item['quantity'] = 1;
                     }
                     
-                    return true;
+                    // Adicionar o item ao pacote modificado
+                    if (!isset($modified_package['contents'][$item_key])) {
+                        // Se o item ainda não existe no pacote modificado, adicioná-lo
+                        $modified_package['contents'][$item_key] = $item;
+                    } else {
+                        // Se o item já existe, aumentar a quantidade
+                        // Isso não deve acontecer mais, já que cada grupo terá apenas um item
+                        $modified_package['contents'][$item_key]['quantity'] += $item['quantity'];
+                    }
                 }
             }
             
-            return false;
+            return $modified_package;
         }
+      
     }
 
     // Inicializar o plugin

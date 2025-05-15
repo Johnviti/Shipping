@@ -14,11 +14,8 @@ class WC_Stackable_Shipping_Integrations {
      */
     public function __construct() {
         $this->logger = function_exists('wc_get_logger') ? wc_get_logger() : null;
-        if ($this->logger) $this->logger->info('Inicializando integrações de frete', ['source' => 'stackable-shipping']);
-        // Registrar os hooks específicos para cada método de envio suportado
         $this->register_hooks();
         
-        // Registrar hook para depuração
         add_action('woocommerce_review_order_before_shipping', array($this, 'display_debug_info'));
         add_action('woocommerce_before_cart_totals', array($this, 'display_debug_info'));
     }
@@ -27,27 +24,10 @@ class WC_Stackable_Shipping_Integrations {
      * Registrar hooks para métodos de envio
      */
     private function register_hooks() {
-        if ($this->logger) $this->logger->info('Registrando hooks de integração', ['source' => 'stackable-shipping']);
-        // WooCommerce Correios - se estiver instalado
-        if ($this->is_plugin_active('woocommerce-correios/woocommerce-correios.php')) {
-            add_filter('woocommerce_correios_shipping_args', array($this, 'correios_adjust_package'), 10, 2);
-        }
-        
-        // Melhor Envio - se estiver instalado
-        if ($this->is_plugin_active('melhor-envio-cotacao/melhor-envio.php')) {
-            add_filter('melhor_envio_request_shipping', array($this, 'melhor_envio_adjust_package'), 10, 1);
-        }
-        
-        // WooCommerce Jadlog - se estiver instalado
-        if ($this->is_plugin_active('jadlog-woocommerce/jadlog-woocommerce.php')) {
-            add_filter('jadlog_wc_shipping_args', array($this, 'jadlog_adjust_package'), 10, 2);
-        }
-        
         // Adicionar suporte para métodos de envio padrão do WooCommerce
         add_filter('woocommerce_shipping_free_shipping_is_available', array($this, 'adjust_free_shipping'), 10, 3);
         add_filter('woocommerce_shipping_flat_rate_is_available', array($this, 'adjust_flat_rate'), 10, 3);
         
-        // Adicionar filtro para logging dos pacotes de envio
         add_filter('woocommerce_shipping_packages', array($this, 'log_shipping_packages'), 10, 1);
     }
     
@@ -59,32 +39,6 @@ class WC_Stackable_Shipping_Integrations {
             include_once(ABSPATH . 'wp-admin/includes/plugin.php');
         }
         return is_plugin_active($plugin);
-    }
-    
-    /**
-     * Ajusta os parâmetros para o método de envio Correios
-     */
-    public function correios_adjust_package($package_args, $package) {
-        if ($this->logger) $this->logger->debug('Ajustando pacote para Correios', ['source' => 'stackable-shipping', 'package_args' => $package_args, 'package' => $package]);
-        // O agrupamento é feito pela classe principal
-        return $package_args;
-    }
-    
-    /**
-     * Ajusta os parâmetros para o Melhor Envio
-     */
-    public function melhor_envio_adjust_package($request_data) {
-        if ($this->logger) $this->logger->debug('Ajustando pacote para Melhor Envio', ['source' => 'stackable-shipping', 'request_data' => $request_data]);
-        // As dimensões dos produtos já foram modificadas pelo filtro
-        return $request_data;
-    }
-    
-    /**
-     * Ajusta os parâmetros para o método de envio Jadlog
-     */
-    public function jadlog_adjust_package($package_args, $package) {
-        if ($this->logger) $this->logger->debug('Ajustando pacote para Jadlog', ['source' => 'stackable-shipping', 'package_args' => $package_args, 'package' => $package]);
-        return $package_args;
     }
     
     /**
@@ -125,8 +79,6 @@ class WC_Stackable_Shipping_Integrations {
         
         $stackable_products = get_option('wc_stackable_shipping_products', array());
         
-        $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
-        
         // Obter os pacotes de envio
         $packages = $cart->get_shipping_packages();
         
@@ -141,7 +93,7 @@ class WC_Stackable_Shipping_Integrations {
         echo '<th style="text-align: left; padding: 8px; border: 1px solid #ddd;">' . __('Quantidade', 'woocommerce-stackable-shipping') . '</th>';
         echo '<th style="text-align: left; padding: 8px; border: 1px solid #ddd;">' . __('Dimensões Originais', 'woocommerce-stackable-shipping') . '</th>';
         echo '<th style="text-align: left; padding: 8px; border: 1px solid #ddd;">' . __('Empilhável', 'woocommerce-stackable-shipping') . '</th>';
-        echo '<th style="text-align: left; padding: 8px; border: 1px solid #ddd;">' . __('Grupo', 'woocommerce-stackable-shipping') . '</th>';
+        echo '<th style="text-align: left; padding: 8px; border: 1px solid #ddd;">' . __('Máximo Empilhamento', 'woocommerce-stackable-shipping') . '</th>';
         echo '</tr>';
         
         foreach ($cart->get_cart() as $cart_item_key => $cart_item) {
@@ -150,22 +102,14 @@ class WC_Stackable_Shipping_Integrations {
             
             // Verificar se o produto é empilhável
             $is_stackable = isset($stackable_products[$product_id]['is_stackable']) && $stackable_products[$product_id]['is_stackable'];
-            
-            // Encontrar o grupo deste produto
-            $product_group = '';
-            foreach ($stacking_groups as $group_id => $group) {
-                if (isset($group['products']) && in_array($product_id, $group['products'])) {
-                    $product_group = $group['name'] ?: __('Grupo', 'woocommerce-stackable-shipping') . ' #' . $group_id;
-                    break;
-                }
-            }
+            $max_stack = isset($stackable_products[$product_id]['max_stack']) ? intval($stackable_products[$product_id]['max_stack']) : 1;
             
             echo '<tr style="border: 1px solid #ddd;">';
             echo '<td style="padding: 8px; border: 1px solid #ddd;">' . $product->get_name() . ' (ID: ' . $product_id . ')</td>';
             echo '<td style="padding: 8px; border: 1px solid #ddd;">' . $cart_item['quantity'] . '</td>';
             echo '<td style="padding: 8px; border: 1px solid #ddd;">' . $product->get_width() . ' × ' . $product->get_length() . ' × ' . $product->get_height() . ' ' . get_option('woocommerce_dimension_unit') . '</td>';
             echo '<td style="padding: 8px; border: 1px solid #ddd;">' . ($is_stackable ? __('Sim', 'woocommerce-stackable-shipping') : __('Não', 'woocommerce-stackable-shipping')) . '</td>';
-            echo '<td style="padding: 8px; border: 1px solid #ddd;">' . ($is_stackable ? $product_group : '-') . '</td>';
+            echo '<td style="padding: 8px; border: 1px solid #ddd;">' . ($is_stackable ? $max_stack : '-') . '</td>';
             echo '</tr>';
         }
         
