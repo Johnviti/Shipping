@@ -58,7 +58,6 @@ if (isset($_POST['save_shipping_settings'])) {
     <nav class="nav-tab-wrapper woo-nav-tab-wrapper">
         <a href="?page=wc-stackable-shipping&tab=products" class="nav-tab <?php echo empty($_GET['tab']) || $_GET['tab'] === 'products' ? 'nav-tab-active' : ''; ?>"><?php _e('Produtos Empilháveis', 'woocommerce-stackable-shipping'); ?></a>
         <a href="?page=wc-stackable-shipping&tab=relationships" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'relationships' ? 'nav-tab-active' : ''; ?>"><?php _e('Relações de Empilhamento', 'woocommerce-stackable-shipping'); ?></a>
-        <a href="?page=wc-stackable-shipping&tab=examples" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'examples' ? 'nav-tab-active' : ''; ?>"><?php _e('Exemplos', 'woocommerce-stackable-shipping'); ?></a>
         <a href="?page=wc-stackable-shipping&tab=settings" class="nav-tab <?php echo isset($_GET['tab']) && $_GET['tab'] === 'settings' ? 'nav-tab-active' : ''; ?>"><?php _e('Configurações', 'woocommerce-stackable-shipping'); ?></a>
     </nav>
 
@@ -136,6 +135,8 @@ function display_products_tab() {
                         <th><?php _e('Dimensões (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>
                         <th><?php _e('Empilhamento Máximo', 'woocommerce-stackable-shipping'); ?></th>
                         <th><?php _e('Incremento de Altura (cm)', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Incremento de Largura (cm)', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Incremento de Comprimento (cm)', 'woocommerce-stackable-shipping'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -144,6 +145,8 @@ function display_products_tab() {
                             $is_stackable = isset($saved_configs[$product_id]['is_stackable']) ? $saved_configs[$product_id]['is_stackable'] : false;
                             $max_stack = isset($saved_configs[$product_id]['max_stack']) ? $saved_configs[$product_id]['max_stack'] : 3;
                             $height_increment = isset($saved_configs[$product_id]['height_increment']) ? $saved_configs[$product_id]['height_increment'] : '';
+                            $width_increment = isset($saved_configs[$product_id]['width_increment']) ? $saved_configs[$product_id]['width_increment'] : '';
+                            $length_increment = isset($saved_configs[$product_id]['length_increment']) ? $saved_configs[$product_id]['length_increment'] : '';
                         ?>
                             <tr>
                                 <td>
@@ -182,6 +185,26 @@ function display_products_tab() {
                                            min="0" 
                                            step="0.01" 
                                            placeholder="<?php echo esc_attr($product['dimensions']['height']); ?>"
+                                           class="small-text stackable-field" 
+                                           <?php echo !$is_stackable ? 'disabled' : ''; ?>>
+                                </td>
+                                <td>
+                                    <input type="number" 
+                                           name="stackable_products_config[<?php echo esc_attr($product_id); ?>][width_increment]" 
+                                           value="<?php echo esc_attr($width_increment); ?>" 
+                                           min="0" 
+                                           step="0.01" 
+                                           placeholder="<?php echo esc_attr($product['dimensions']['width']); ?>"
+                                           class="small-text stackable-field" 
+                                           <?php echo !$is_stackable ? 'disabled' : ''; ?>>
+                                </td>
+                                <td>
+                                    <input type="number" 
+                                           name="stackable_products_config[<?php echo esc_attr($product_id); ?>][length_increment]" 
+                                           value="<?php echo esc_attr($length_increment); ?>" 
+                                           min="0" 
+                                           step="0.01" 
+                                           placeholder="<?php echo esc_attr($product['dimensions']['length']); ?>"
                                            class="small-text stackable-field" 
                                            <?php echo !$is_stackable ? 'disabled' : ''; ?>>
                                 </td>
@@ -264,6 +287,8 @@ function display_products_tab() {
                         <th><?php _e('Dimensões Originais (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>
                         <th><?php _e('Empilhamento Máximo', 'woocommerce-stackable-shipping'); ?></th>
                         <th><?php _e('Incremento de Altura', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Incremento de Largura', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Incremento de Comprimento', 'woocommerce-stackable-shipping'); ?></th>
                     </tr>
                 </thead>
                 <tbody>
@@ -280,12 +305,9 @@ function display_products_tab() {
                                 ?>
                             </td>
                             <td><?php echo esc_html($product['max_stack']); ?></td>
-                            <td>
-                                <?php 
-                                echo esc_html($product['height_increment']) . ' ' . 
-                                     esc_html(get_option('woocommerce_dimension_unit')); 
-                                ?>
-                            </td>
+                            <td><?php echo !empty($product['height_increment']) ? esc_html($product['height_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
+                            <td><?php echo !empty($product['width_increment']) ? esc_html($product['width_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
+                            <td><?php echo !empty($product['length_increment']) ? esc_html($product['length_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
                         </tr>
                     <?php endforeach; ?>
                 </tbody>
@@ -464,58 +486,6 @@ function display_stacking_group($group_id, $group, $products) {
             </label>
         </div>
         <button type="button" class="button remove-group"><?php _e('Remover Grupo', 'woocommerce-stackable-shipping'); ?></button>
-    </div>
-    <?php
-}
-
-/**
- * Exibe a aba de exemplos
- */
-function display_examples_tab() {
-    ?>
-    <div class="card">
-        <h2><?php _e('Exemplos de Agrupamento', 'woocommerce-stackable-shipping'); ?></h2>
-        <p><?php _e('Aqui estão alguns exemplos de como os produtos serão agrupados:', 'woocommerce-stackable-shipping'); ?></p>
-
-        <div class="example-wrapper">
-            <h3><?php _e('Exemplo 1: Produto único com várias unidades', 'woocommerce-stackable-shipping'); ?></h3>
-            <div class="example-content">
-                <div class="example-image">
-                    <img src="<?php echo esc_url(plugin_dir_url(dirname(__FILE__)) . 'assets/images/stack-example-1.png'); ?>" alt="<?php esc_attr_e('Exemplo de empilhamento', 'woocommerce-stackable-shipping'); ?>">
-                </div>
-                <div class="example-text">
-                    <p>
-                        <?php _e('Produto A (20×30×10 cm)', 'woocommerce-stackable-shipping'); ?><br>
-                        <?php _e('Quantidade: 3', 'woocommerce-stackable-shipping'); ?><br>
-                        <?php _e('Incremento de altura: 5 cm', 'woocommerce-stackable-shipping'); ?><br>
-                        <strong><?php _e('Dimensões para frete: 20×30×20 cm', 'woocommerce-stackable-shipping'); ?></strong>
-                    </p>
-                    <p class="description">
-                        <?php _e('Cálculo: Altura base (10 cm) + 2 incrementos de 5 cm cada = 20 cm', 'woocommerce-stackable-shipping'); ?>
-                    </p>
-                </div>
-            </div>
-        </div>
-        
-        <div class="example-wrapper">
-            <h3><?php _e('Exemplo 2: Produtos diferentes no mesmo grupo', 'woocommerce-stackable-shipping'); ?></h3>
-            <div class="example-content">
-                <div class="example-image">
-                    <img src="<?php echo esc_url(plugin_dir_url(dirname(__FILE__)) . 'assets/images/stack-example-2.png'); ?>" alt="<?php esc_attr_e('Exemplo de empilhamento misto', 'woocommerce-stackable-shipping'); ?>">
-                </div>
-                <div class="example-text">
-                    <p>
-                        <?php _e('Produto A (20×30×10 cm) - 2 unidades', 'woocommerce-stackable-shipping'); ?><br>
-                        <?php _e('Produto B (20×30×8 cm) - 1 unidade', 'woocommerce-stackable-shipping'); ?><br>
-                        <?php _e('Ambos no mesmo grupo de empilhamento', 'woocommerce-stackable-shipping'); ?><br>
-                        <strong><?php _e('Dimensões para frete: 20×30×23 cm', 'woocommerce-stackable-shipping'); ?></strong>
-                    </p>
-                    <p class="description">
-                        <?php _e('Cálculo: Altura do maior produto (10 cm) + incremento do Produto A (5 cm) + altura adicional do Produto B (8 cm) = 23 cm', 'woocommerce-stackable-shipping'); ?>
-                    </p>
-                </div>
-            </div>
-        </div>
     </div>
     <?php
 }

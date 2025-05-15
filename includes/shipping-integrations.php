@@ -66,7 +66,6 @@ class WC_Stackable_Shipping_Integrations {
      */
     public function correios_adjust_package($package_args, $package) {
         if ($this->logger) $this->logger->debug('Ajustando pacote para Correios', ['source' => 'stackable-shipping', 'package_args' => $package_args, 'package' => $package]);
-        // Não modificar se não existirem produtos agrupados
         // O agrupamento é feito pela classe principal
         return $package_args;
     }
@@ -77,8 +76,6 @@ class WC_Stackable_Shipping_Integrations {
     public function melhor_envio_adjust_package($request_data) {
         if ($this->logger) $this->logger->debug('Ajustando pacote para Melhor Envio', ['source' => 'stackable-shipping', 'request_data' => $request_data]);
         // As dimensões dos produtos já foram modificadas pelo filtro
-        // woocommerce_cart_shipping_packages, então não é necessário
-        // fazer ajustes adicionais aqui.
         return $request_data;
     }
     
@@ -87,8 +84,6 @@ class WC_Stackable_Shipping_Integrations {
      */
     public function jadlog_adjust_package($package_args, $package) {
         if ($this->logger) $this->logger->debug('Ajustando pacote para Jadlog', ['source' => 'stackable-shipping', 'package_args' => $package_args, 'package' => $package]);
-        // Não modificar se não existirem produtos agrupados
-        // O agrupamento é feito pela classe principal
         return $package_args;
     }
     
@@ -106,7 +101,6 @@ class WC_Stackable_Shipping_Integrations {
      */
     public function adjust_flat_rate($is_available, $package, $shipping_method) {
         if ($this->logger) $this->logger->debug('Ajustando taxa fixa', ['source' => 'stackable-shipping', 'is_available' => $is_available, 'package' => $package, 'shipping_method' => $shipping_method]);
-        // A taxa fixa não depende das dimensões do pacote
         return $is_available;
     }
     
@@ -115,13 +109,10 @@ class WC_Stackable_Shipping_Integrations {
      */
     public function display_debug_info() {
         if ($this->logger) $this->logger->info('Exibindo debug info (integrações)', ['source' => 'stackable-shipping']);
-        // Verificar se a depuração está ativada
         $debug_enabled = get_option('wc_stackable_shipping_debug_enabled', 0);
         
-        // Verificar se o usuário é administrador
         $is_admin = current_user_can('manage_options');
         
-        // Se a depuração não estiver ativada ou o usuário não for administrador, não fazer nada
         if (!$debug_enabled || !$is_admin) {
             return;
         }
@@ -132,10 +123,8 @@ class WC_Stackable_Shipping_Integrations {
             return;
         }
         
-        // Obter os produtos configurados como empilháveis
         $stackable_products = get_option('wc_stackable_shipping_products', array());
         
-        // Obter os grupos de empilhamento
         $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
         
         // Obter os pacotes de envio
@@ -144,7 +133,6 @@ class WC_Stackable_Shipping_Integrations {
         echo '<div class="stackable-shipping-debug" style="background: #f8f9fa; padding: 15px; margin: 15px 0; border: 1px solid #ddd; border-radius: 4px;">';
         echo '<h3>' . __('Depuração de Agrupamento para Frete (Apenas Administradores)', 'woocommerce-stackable-shipping') . '</h3>';
         
-        // Exibir produtos no carrinho
         echo '<div class="debug-section">';
         echo '<h4>' . __('Produtos no Carrinho', 'woocommerce-stackable-shipping') . '</h4>';
         echo '<table class="debug-table" style="width: 100%; border-collapse: collapse;">';
@@ -308,7 +296,6 @@ class WC_Stackable_Shipping_Integrations {
                         $sanitized_item['height'] = $product->get_height();
                         $sanitized_item['weight'] = $product->get_weight();
                         
-                        // Adicionar informações sobre incrementos de empilhamento
                         $product_id = $product->get_id();
                         $sanitized_item['stack_height_increment'] = get_post_meta($product_id, '_stack_height_increment', true);
                         $sanitized_item['stack_width_increment'] = get_post_meta($product_id, '_stack_width_increment', true);
@@ -352,36 +339,28 @@ class WC_Stackable_Shipping_Integrations {
             foreach ($package['contents'] as $item) {
                 $product = isset($item['data']) ? $item['data'] : null;
                 if ($product) {
-                    // Para simplificar, usamos as dimensões do maior produto
-                    // Na implementação real, seria usado o algoritmo de empilhamento
                     $dimensions['width'] = max($dimensions['width'], $product->get_width());
                     $dimensions['length'] = max($dimensions['length'], $product->get_length());
-                    $dimensions['height'] += $product->get_height(); // Somamos as alturas para simular empilhamento
+                    $dimensions['height'] += $product->get_height(); 
                     $dimensions['weight'] += $product->get_weight() * $item['quantity'];
                     
-                    // Verificar se há incrementos de dimensões para empilhamento
                     $product_id = $product->get_id();
                     $is_stackable = get_post_meta($product_id, '_is_stackable', true) === 'yes';
                     
                     if ($is_stackable && $item['quantity'] > 1) {
-                        // Obter incrementos de dimensões
                         $height_increment = get_post_meta($product_id, '_stack_height_increment', true);
                         $width_increment = get_post_meta($product_id, '_stack_width_increment', true);
                         $length_increment = get_post_meta($product_id, '_stack_length_increment', true);
                         
-                        // Aplicar incrementos se definidos
                         if (!empty($height_increment)) {
-                            // Adicionar altura para cada item após o primeiro
                             $dimensions['height'] += ($item['quantity'] - 1) * floatval($height_increment);
                         }
                         
                         if (!empty($width_increment)) {
-                            // Incrementar largura com base na quantidade
                             $dimensions['width'] += ($item['quantity'] - 1) * floatval($width_increment);
                         }
                         
                         if (!empty($length_increment)) {
-                            // Incrementar comprimento com base na quantidade
                             $dimensions['length'] += ($item['quantity'] - 1) * floatval($length_increment);
                         }
                     }
@@ -392,5 +371,3 @@ class WC_Stackable_Shipping_Integrations {
         return $dimensions;
     }
 }
-
-// Não inicializar a classe aqui, ela será inicializada pelo arquivo principal do plugin

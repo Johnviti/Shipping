@@ -1,6 +1,6 @@
 <?php
 /**
- * Plugin Name: WooCommerce Stackable Shipping
+ * Plugin Name: WP-Shipping
  * Description: Sistema de agrupamento de produtos para cálculo de frete, permitindo empilhamento de produtos
  * Version: 1.0.0
  * Author: Sistema de Envio
@@ -140,7 +140,6 @@ if (!class_exists('WC_Stackable_Shipping')) {
                 if ($logger) {
                     $logger->info('Modificando pacotes de envio', ['source' => 'stackable-shipping']);
                     
-                    // Log dos pacotes originais
                     $logger->info(
                         'Pacotes originais antes da modificação', 
                         [
@@ -601,21 +600,26 @@ if (!class_exists('WC_Stackable_Shipping')) {
                         $base_height = $product->get_height();
                     }
                     
-                    // Calcular incrementos para empilhamento
-                    $height_increment = get_post_meta($product_id, '_stack_height_increment', true);
-                    $width_increment = get_post_meta($product_id, '_stack_width_increment', true);
-                    $length_increment = get_post_meta($product_id, '_stack_length_increment', true);
+                    // Pegar medidas
+                    $saved_configs = get_option('wc_stackable_shipping_products', array());
                     
-                    // Usar valores padrão se não estiverem definidos
+                    if (isset($saved_configs[$product_id])) {
+                        $height_increment = isset($saved_configs[$product_id]['height_increment']) ? $saved_configs[$product_id]['height_increment'] : '';
+                        $width_increment = isset($saved_configs[$product_id]['width_increment']) ? $saved_configs[$product_id]['width_increment'] : '';
+                        $length_increment = isset($saved_configs[$product_id]['length_increment']) ? $saved_configs[$product_id]['length_increment'] : '';
+                    } else {
+                        $height_increment = get_post_meta($product_id, '_stack_height_increment', true);
+                        $width_increment = get_post_meta($product_id, '_stack_width_increment', true);
+                        $length_increment = get_post_meta($product_id, '_stack_length_increment', true);
+                    }
+                    
                     if (empty($height_increment)) {
                         $height_increment = $product->get_height(); // Se não definido, usa altura total
                     }
                     
-                    // Adicionar incrementos para cada item após o primeiro
                     if ($quantity > 1) {
                         $additional_height += ($quantity - 1) * floatval($height_increment);
                         
-                        // Aplicar incrementos de largura e comprimento se definidos
                         if (!empty($width_increment)) {
                             $additional_width += ($quantity - 1) * floatval($width_increment);
                         }
@@ -625,7 +629,6 @@ if (!class_exists('WC_Stackable_Shipping')) {
                         }
                     }
                     
-                    // Somar o peso de todos os itens
                     $total_weight += $product->get_weight() * $quantity;
                 }
                 
@@ -634,18 +637,14 @@ if (!class_exists('WC_Stackable_Shipping')) {
                 $final_width = $base_width + $additional_width;
                 $final_length = $base_length + $additional_length;
                 
-                // Modificar os dados do produto virtual que representa o grupo
                 foreach ($group as $cart_item_key => $item) {
-                    // Só precisamos modificar um item do grupo (o primeiro)
                     $product = $modified_package['contents'][$cart_item_key]['data'];
                     
-                    // Atualizar dimensões apenas para cálculo de frete
                     $product->set_width($final_width);
                     $product->set_length($final_length);
                     $product->set_height($final_height);
                     $product->set_weight($total_weight);
                     
-                    // Saímos do loop após modificar o primeiro item
                     break;
                 }
             }
@@ -657,31 +656,25 @@ if (!class_exists('WC_Stackable_Shipping')) {
          * Verifica se dois produtos podem ser empilhados juntos
          */
         private function can_stack_together($product_id_1, $product_id_2) {
-            // Se são o mesmo produto, verificamos a configuração individual
             if ($product_id_1 == $product_id_2) {
                 return true;
             }
             
-            // Verificar grupos de empilhamento
             $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
             
             foreach ($stacking_groups as $group) {
                 $products = isset($group['products']) ? $group['products'] : array();
                 $rule = isset($group['stacking_rule']) ? $group['stacking_rule'] : 'any';
                 
-                // Verifica se ambos os produtos estão no mesmo grupo
                 if (in_array($product_id_1, $products) && in_array($product_id_2, $products)) {
-                    // Se a regra for "mesmo produto apenas", não permitir empilhamento de diferentes produtos
                     if ($rule === 'same_only' && $product_id_1 != $product_id_2) {
                         return false;
                     }
                     
-                    // Ambos estão no mesmo grupo e a regra permite
                     return true;
                 }
             }
             
-            // Não encontrados no mesmo grupo
             return false;
         }
     }
