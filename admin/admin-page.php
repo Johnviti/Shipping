@@ -25,11 +25,12 @@ if (isset($_POST['save_stackable_products'])) {
 if (isset($_POST['save_stacking_relationships'])) {
     if (isset($_POST['stackable_relationships_nonce']) && wp_verify_nonce($_POST['stackable_relationships_nonce'], 'save_stackable_relationships')) {
         $stacking_groups = isset($_POST['stacking_groups']) ? $_POST['stacking_groups'] : array();
-        
+        foreach ($stacking_groups as &$group) {
+            if (!isset($group['products'])) $group['products'] = array();
+            if (!isset($group['product_settings'])) $group['product_settings'] = array();
+        }
         update_option('wc_stackable_shipping_relationships', $stacking_groups);
-        
         if ($logger) $logger->info('Relações de empilhamento salvas', array('source' => 'stackable-shipping', 'data' => $stacking_groups));
-        
         echo '<div class="notice notice-success"><p>' . __('Relações de empilhamento salvas com sucesso!', 'woocommerce-stackable-shipping') . '</p></div>';
     }
 }
@@ -149,27 +150,22 @@ function display_products_tab() {
                             $length_increment = isset($saved_configs[$product_id]['length_increment']) ? $saved_configs[$product_id]['length_increment'] : '';
                         ?>
                             <tr>
-                                <td>
+                                <td data-label="Empilhável">
                                     <input type="checkbox" 
                                            name="stackable_products_config[<?php echo esc_attr($product_id); ?>][is_stackable]" 
                                            value="1" 
                                            <?php checked($is_stackable, true); ?> 
                                            class="enable-stackable">
                                 </td>
-                                <td>
+                                <td data-label="Produto">
                                     <?php echo esc_html($product['name']); ?>
                                     <input type="hidden" name="stackable_products_config[<?php echo esc_attr($product_id); ?>][name]" value="<?php echo esc_attr($product['name']); ?>">
                                 </td>
-                                <td><?php echo esc_html($product['sku']); ?></td>
-                                <td>
-                                    <?php 
-                                    echo esc_html($product['dimensions']['width']) . ' × ' . 
-                                         esc_html($product['dimensions']['length']) . ' × ' . 
-                                         esc_html($product['dimensions']['height']) . ' ' . 
-                                         esc_html(get_option('woocommerce_dimension_unit')); 
-                                    ?>
+                                <td data-label="SKU"><?php echo esc_html($product['sku']); ?></td>
+                                <td data-label="Dimensões (LxCxA)">
+                                    <?php echo esc_html($product['dimensions']['width']) . ' × ' . esc_html($product['dimensions']['length']) . ' × ' . esc_html($product['dimensions']['height']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')); ?>
                                 </td>
-                                <td>
+                                <td data-label="Empilhamento Máximo">
                                     <input type="number" 
                                            name="stackable_products_config[<?php echo esc_attr($product_id); ?>][max_stack]" 
                                            value="<?php echo esc_attr($max_stack); ?>" 
@@ -178,7 +174,7 @@ function display_products_tab() {
                                            class="small-text stackable-field" 
                                            <?php echo !$is_stackable ? 'disabled' : ''; ?>>
                                 </td>
-                                <td>
+                                <td data-label="Incremento de Altura (cm)">
                                     <input type="number" 
                                            name="stackable_products_config[<?php echo esc_attr($product_id); ?>][height_increment]" 
                                            value="<?php echo esc_attr($height_increment); ?>" 
@@ -188,7 +184,7 @@ function display_products_tab() {
                                            class="small-text stackable-field" 
                                            <?php echo !$is_stackable ? 'disabled' : ''; ?>>
                                 </td>
-                                <td>
+                                <td data-label="Incremento de Largura (cm)">
                                     <input type="number" 
                                            name="stackable_products_config[<?php echo esc_attr($product_id); ?>][width_increment]" 
                                            value="<?php echo esc_attr($width_increment); ?>" 
@@ -198,7 +194,7 @@ function display_products_tab() {
                                            class="small-text stackable-field" 
                                            <?php echo !$is_stackable ? 'disabled' : ''; ?>>
                                 </td>
-                                <td>
+                                <td data-label="Incremento de Comprimento (cm)">
                                     <input type="number" 
                                            name="stackable_products_config[<?php echo esc_attr($product_id); ?>][length_increment]" 
                                            value="<?php echo esc_attr($length_increment); ?>" 
@@ -271,50 +267,43 @@ function display_products_tab() {
                 if (isset($products[$product_id])) {
                     $stackable_products[$product_id] = array_merge($products[$product_id], array(
                         'max_stack' => $config['max_stack'],
-                        'height_increment' => $config['height_increment']
+                        'height_increment' => $config['height_increment'],
+                        'width_increment' => $config['width_increment'],
+                        'length_increment' => $config['length_increment']
                     ));
                 }
             }
         }
         ?>
         
-        <?php if (!empty($stackable_products)) : ?>
-            <table class="widefat">
-                <thead>
-                    <tr>
-                        <th><?php _e('Produto', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('SKU', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('Dimensões Originais (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('Empilhamento Máximo', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('Incremento de Altura', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('Incremento de Largura', 'woocommerce-stackable-shipping'); ?></th>
-                        <th><?php _e('Incremento de Comprimento', 'woocommerce-stackable-shipping'); ?></th>
-                    </tr>
-                </thead>
-                <tbody>
-                    <?php foreach ($stackable_products as $product_id => $product) : ?>
-                        <tr>
-                            <td><?php echo esc_html($product['name']); ?></td>
-                            <td><?php echo esc_html($product['sku']); ?></td>
-                            <td>
-                                <?php 
-                                echo esc_html($product['dimensions']['width']) . ' × ' . 
-                                     esc_html($product['dimensions']['length']) . ' × ' . 
-                                     esc_html($product['dimensions']['height']) . ' ' . 
-                                     esc_html(get_option('woocommerce_dimension_unit')); 
-                                ?>
-                            </td>
-                            <td><?php echo esc_html($product['max_stack']); ?></td>
-                            <td><?php echo !empty($product['height_increment']) ? esc_html($product['height_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
-                            <td><?php echo !empty($product['width_increment']) ? esc_html($product['width_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
-                            <td><?php echo !empty($product['length_increment']) ? esc_html($product['length_increment']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')) : '-'; ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                </tbody>
-            </table>
-        <?php else : ?>
-            <p><?php _e('Nenhum produto foi configurado como empilhável ainda.', 'woocommerce-stackable-shipping'); ?></p>
-        <?php endif; ?>
+        <div class="stackable-list">
+            <div class="stackable-list-header">
+                <div>Email</div>
+                <div>Dimensões</div>
+                <div>Empilhamento</div>
+                <div>Altura</div>
+                <div>Largura</div>
+                <div>Comprimento</div>
+                <div>Status</div>
+            </div>
+            <?php foreach ($stackable_products as $product_id => $product) : ?>
+                <div class="stackable-list-row">
+                    <div><?php echo esc_html($product['name']); ?> <span class="sku"><?php echo esc_html($product['sku']); ?></span></div>
+                    <div><?php echo esc_html($product['dimensions']['width']) . ' × ' . esc_html($product['dimensions']['length']) . ' × ' . esc_html($product['dimensions']['height']) . ' ' . esc_html(get_option('woocommerce_dimension_unit')); ?></div>
+                    <div><?php echo esc_html($product['max_stack']); ?></div>
+                    <div><?php echo !empty($product['height_increment']) ? esc_html($product['height_increment']) : '-'; ?></div>
+                    <div><?php echo !empty($product['width_increment']) ? esc_html($product['width_increment']) : '-'; ?></div>
+                    <div><?php echo !empty($product['length_increment']) ? esc_html($product['length_increment']) : '-'; ?></div>
+                    <div>
+                        <?php if (!empty($product['is_stackable'])): ?>
+                            <span class="tag tag-paid">Empilhável</span>
+                        <?php else: ?>
+                            <span class="tag tag-cancelled">Não</span>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            <?php endforeach; ?>
+        </div>
     </div>
     <?php
 }
@@ -450,8 +439,8 @@ function display_relationships_tab() {
 function display_stacking_group($group_id, $group, $products) {
     $group_name = isset($group['name']) ? $group['name'] : '';
     $max_items = isset($group['max_items']) ? $group['max_items'] : 5;
-    $stacking_rule = isset($group['stacking_rule']) ? $group['stacking_rule'] : 'any';
     $selected_products = isset($group['products']) ? $group['products'] : array();
+    $product_settings = isset($group['product_settings']) ? $group['product_settings'] : array();
     ?>
     <div class="stacking-group" id="stacking-group-<?php echo esc_attr($group_id); ?>">
         <h3><?php _e('Grupo de Empilhamento', 'woocommerce-stackable-shipping'); ?> #<?php echo esc_html($group_id); ?></h3>
@@ -461,29 +450,42 @@ function display_stacking_group($group_id, $group, $products) {
                 <input type="text" name="stacking_groups[<?php echo esc_attr($group_id); ?>][name]" value="<?php echo esc_attr($group_name); ?>" placeholder="<?php esc_attr_e('Ex: Roupas pequenas', 'woocommerce-stackable-shipping'); ?>">
             </label>
             <label>
-                <?php _e('Máximo de itens no grupo:', 'woocommerce-stackable-shipping'); ?>
+                <?php _e('Máximo de itens no grupo (padrão):', 'woocommerce-stackable-shipping'); ?>
                 <input type="number" name="stacking_groups[<?php echo esc_attr($group_id); ?>][max_items]" value="<?php echo esc_attr($max_items); ?>" min="1" step="1">
             </label>
         </div>
         <div class="group-products">
-            <h4><?php _e('Produtos neste grupo:', 'woocommerce-stackable-shipping'); ?></h4>
-            <select name="stacking_groups[<?php echo esc_attr($group_id); ?>][products][]" multiple="multiple" class="product-select" style="width: 100%; min-height: 150px;">
-                <?php foreach ($products as $product_id => $product) : ?>
-                <option value="<?php echo esc_attr($product_id); ?>" <?php echo in_array($product_id, $selected_products) ? 'selected' : ''; ?>><?php echo esc_html($product['name'] . ' (' . $product['sku'] . ') - ' . $product['dimensions']); ?></option>
+            <h4><?php _e('Produtos neste grupo e limites individuais:', 'woocommerce-stackable-shipping'); ?></h4>
+            <table class="widefat">
+                <thead>
+                    <tr>
+                        <th><?php _e('Produto', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Min.', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Max.', 'woocommerce-stackable-shipping'); ?></th>
+                        <th><?php _e('Incremento', 'woocommerce-stackable-shipping'); ?></th>
+                    </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($products as $product_id => $product) :
+                    $checked = in_array($product_id, $selected_products);
+                    $min = isset($product_settings[$product_id]['min']) ? $product_settings[$product_id]['min'] : '';
+                    $max = isset($product_settings[$product_id]['max']) ? $product_settings[$product_id]['max'] : '';
+                    $inc = isset($product_settings[$product_id]['increment']) ? $product_settings[$product_id]['increment'] : '';
+                ?>
+                    <tr>
+                        <td>
+                            <label>
+                                <input type="checkbox" name="stacking_groups[<?php echo esc_attr($group_id); ?>][products][]" value="<?php echo esc_attr($product_id); ?>" <?php checked($checked); ?>>
+                                <?php echo esc_html($product['name'] . ' (' . $product['sku'] . ')'); ?>
+                            </label>
+                        </td>
+                        <td><input type="number" name="stacking_groups[<?php echo esc_attr($group_id); ?>][product_settings][<?php echo esc_attr($product_id); ?>][min]" value="<?php echo esc_attr($min); ?>" min="0" step="1" style="width:60px;"></td>
+                        <td><input type="number" name="stacking_groups[<?php echo esc_attr($group_id); ?>][product_settings][<?php echo esc_attr($product_id); ?>][max]" value="<?php echo esc_attr($max); ?>" min="1" step="1" style="width:60px;"></td>
+                        <td><input type="number" name="stacking_groups[<?php echo esc_attr($group_id); ?>][product_settings][<?php echo esc_attr($product_id); ?>][increment]" value="<?php echo esc_attr($inc); ?>" min="0" step="0.01" style="width:80px;"></td>
+                    </tr>
                 <?php endforeach; ?>
-            </select>
-        </div>
-        <div class="group-rules">
-            <h4><?php _e('Regras de empilhamento:', 'woocommerce-stackable-shipping'); ?></h4>
-            <label>
-                <input type="radio" name="stacking_groups[<?php echo esc_attr($group_id); ?>][stacking_rule]" value="any" <?php checked($stacking_rule, 'any'); ?>>
-                <?php _e('Qualquer produto deste grupo pode ser empilhado com qualquer outro do mesmo grupo', 'woocommerce-stackable-shipping'); ?>
-            </label>
-            <br>
-            <label>
-                <input type="radio" name="stacking_groups[<?php echo esc_attr($group_id); ?>][stacking_rule]" value="same_only" <?php checked($stacking_rule, 'same_only'); ?>>
-                <?php _e('Apenas produtos idênticos podem ser empilhados', 'woocommerce-stackable-shipping'); ?>
-            </label>
+                </tbody>
+            </table>
         </div>
         <button type="button" class="button remove-group"><?php _e('Remover Grupo', 'woocommerce-stackable-shipping'); ?></button>
     </div>

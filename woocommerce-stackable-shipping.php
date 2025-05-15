@@ -280,6 +280,7 @@ if (!class_exists('WC_Stackable_Shipping')) {
         private function group_stackable_products($cart_contents) {
             $stackable_products = array();
             $non_stackable = array();
+            $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
             
             // Primeiro separamos os produtos empilháveis dos não empilháveis
             foreach ($cart_contents as $cart_item_key => $cart_item) {
@@ -287,369 +288,177 @@ if (!class_exists('WC_Stackable_Shipping')) {
                 $is_stackable = get_post_meta($product_id, '_is_stackable', true);
                 
                 if ('yes' === $is_stackable) {
-                    $stackable_products[$cart_item_key] = $cart_item;
+                    // Encontrar o grupo deste produto
+                    $product_group = null;
+                    foreach ($stacking_groups as $group) {
+                        if (isset($group['products']) && in_array($product_id, $group['products'])) {
+                            $product_group = $group;
+                            break;
+                        }
+                    }
+                    
+                    if ($product_group) {
+                        $stackable_products[$cart_item_key] = array(
+                            'item' => $cart_item,
+                            'group' => $product_group,
+                            'settings' => isset($product_group['product_settings'][$product_id]) ? 
+                                        $product_group['product_settings'][$product_id] : 
+                                        array('min' => 1, 'max' => 1, 'increment' => 0)
+                        );
+                    } else {
+                        $non_stackable[$cart_item_key] = $cart_item;
+                    }
                 } else {
                     $non_stackable[$cart_item_key] = $cart_item;
                 }
             }
             
-            // Se não temos produtos empilháveis, retornamos vazio
             if (empty($stackable_products)) {
-                return array();
+                return array($non_stackable);
             }
             
-            // Obter as configurações de grupos de empilhamento
-            $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
-            $final_groups = array();
+            // Agrupar produtos por grupo de empilhamento
+            $grouped_products = array();
+            foreach ($stackable_products as $cart_item_key => $product_data) {
+                $group_id = array_search($product_data['group'], $stacking_groups);
+                if (!isset($grouped_products[$group_id])) {
+                    $grouped_products[$group_id] = array();
+                }
+                $grouped_products[$group_id][] = $product_data;
+            }
             
-            // Se não há grupos definidos, usamos a lógica original por produto
-            if (empty($stacking_groups)) {
-                // Agora agrupamos os produtos empilháveis por tipo (mesmo produto)
-                $product_groups = array();
-                foreach ($stackable_products as $cart_item_key => $cart_item) {
+            // Criar pacotes respeitando os limites individuais
+            $packages = array();
+            
+            foreach ($grouped_products as $group_id => $products) {
+                $group = $stacking_groups[$group_id];
+                $current_package = array();
+                $current_quantities = array();
+                
+                foreach ($products as $product_data) {
+                    $cart_item = $product_data['item'];
                     $product_id = $cart_item['product_id'];
+                    $settings = $product_data['settings'];
+                    $remaining_quantity = $cart_item['quantity'];
                     
-                    if (!isset($product_groups[$product_id])) {
-                        $product_groups[$product_id] = array();
-                    }
-                    
-                    $product_groups[$product_id][$cart_item_key] = $cart_item;
-                }
-                
-                // Para cada grupo, verificamos se está dentro do limite de empilhamento
-                foreach ($product_groups as $product_id => $items) {
-                    $max_stack = (int) get_post_meta($product_id, '_max_stack_same', true);
-                    if ($max_stack <= 0) {
-                        $max_stack = 1; // Padrão: não empilhável se não configurado
-                    }
-                    
-                    // Dividir em subgrupos com base no empilhamento máximo
-                    $current_group = array();
-                    $current_count = 0;
-                    
-                    foreach ($items as $cart_item_key => $cart_item) {
-                        $quantity = $cart_item['quantity'];
+                    while ($remaining_quantity > 0) {
+                        // Verificar se podemos adicionar mais deste produto ao pacote atual
+                        $current_quantity = isset($current_quantities[$product_id]) ? $current_quantities[$product_id] : 0;
                         
-                        for ($i = 0; $i < $quantity; $i++) {
-                            if ($current_count >= $max_stack) {
-                                // Esse grupo está cheio, criar um novo
-                                $final_groups[] = $current_group;
-                                $current_group = array();
-                                $current_count = 0;
+                        if ($current_quantity >= $settings['max']) {
+                            // Se atingiu o máximo, criar novo pacote
+                            if (!empty($current_package)) {
+                                $packages[] = $current_package;
+                                $current_package = array();
+                                $current_quantities = array();
                             }
-                            
-                            if (empty($current_group)) {
-                                $current_group[$cart_item_key] = array(
-                                    'product_id' => $product_id,
-                                    'quantity' => 1,
-                                    'data' => $cart_item['data']
-                                );
-                            } else {
-                                // Incrementar quantidade no grupo atual
-                                foreach ($current_group as $key => $item) {
-                                    if ($item['product_id'] == $product_id) {
-                                        $current_group[$key]['quantity']++;
-                                        break;
-                                    }
-                                }
-                            }
-                            
-                            $current_count++;
                         }
-                    }
-                    
-                    // Adicionar o último grupo se não estiver vazio
-                    if (!empty($current_group)) {
-                        $final_groups[] = $current_group;
-                    }
-                }
-            } else {
-                // Lógica baseada em grupos de relacionamento
-                // Primeiro, mapear os produtos por grupos
-                $grouped_products = array();
-                
-                foreach ($stacking_groups as $group_id => $group) {
-                    $grouped_products[$group_id] = array(
-                        'max_items' => isset($group['max_items']) ? (int) $group['max_items'] : 5,
-                        'rule' => isset($group['stacking_rule']) ? $group['stacking_rule'] : 'any',
-                        'products' => array()
-                    );
-                    
-                    // Verificar quais produtos do carrinho estão neste grupo
-                    foreach ($stackable_products as $cart_item_key => $cart_item) {
-                        $product_id = $cart_item['product_id'];
-                        if (isset($group['products']) && in_array($product_id, $group['products'])) {
-                            $grouped_products[$group_id]['products'][$cart_item_key] = $cart_item;
+                        
+                        // Calcular quanto podemos adicionar neste pacote
+                        $can_add = min(
+                            $remaining_quantity,
+                            $settings['max'] - $current_quantity
+                        );
+                        
+                        if ($can_add > 0) {
+                            // Adicionar ao pacote atual
+                            $current_package[$cart_item_key] = array(
+                                'item' => $cart_item,
+                                'quantity' => $can_add,
+                                'settings' => $settings
+                            );
+                            $current_quantities[$product_id] = $current_quantity + $can_add;
+                            $remaining_quantity -= $can_add;
                         }
                     }
                 }
                 
-                // Agrupar os produtos de cada grupo considerando suas regras
-                foreach ($grouped_products as $group_id => $group_data) {
-                    if (empty($group_data['products'])) {
-                        continue;
-                    }
-                    
-                    $rule = $group_data['rule'];
-                    $max_items = $group_data['max_items'];
-                    $group_items = $group_data['products'];
-                    
-                    if ($rule === 'same_only') {
-                        // Agrupar apenas produtos idênticos
-                        $product_groups = array();
-                        foreach ($group_items as $cart_item_key => $cart_item) {
-                            $product_id = $cart_item['product_id'];
-                            
-                            if (!isset($product_groups[$product_id])) {
-                                $product_groups[$product_id] = array();
-                            }
-                            
-                            $product_groups[$product_id][$cart_item_key] = $cart_item;
-                        }
-                        
-                        // Processar cada grupo de produtos idênticos
-                        foreach ($product_groups as $product_id => $items) {
-                            $current_group = array();
-                            $current_count = 0;
-                            
-                            foreach ($items as $cart_item_key => $cart_item) {
-                                $quantity = $cart_item['quantity'];
-                                
-                                for ($i = 0; $i < $quantity; $i++) {
-                                    if ($current_count >= $max_items) {
-                                        // Esse grupo está cheio, criar um novo
-                                        $final_groups[] = $current_group;
-                                        $current_group = array();
-                                        $current_count = 0;
-                                    }
-                                    
-                                    if (empty($current_group)) {
-                                        $current_group[$cart_item_key] = array(
-                                            'product_id' => $product_id,
-                                            'quantity' => 1,
-                                            'data' => $cart_item['data']
-                                        );
-                                    } else {
-                                        // Incrementar quantidade no grupo atual
-                                        foreach ($current_group as $key => $item) {
-                                            if ($item['product_id'] == $product_id) {
-                                                $current_group[$key]['quantity']++;
-                                                break;
-                                            }
-                                        }
-                                    }
-                                    
-                                    $current_count++;
-                                }
-                            }
-                            
-                            // Adicionar o último grupo se não estiver vazio
-                            if (!empty($current_group)) {
-                                $final_groups[] = $current_group;
-                            }
-                        }
-                    } else {
-                        // Qualquer produto pode ser empilhado com qualquer outro no grupo
-                        $current_group = array();
-                        $current_count = 0;
-                        $processed_item_counts = array();
-                        
-                        // Iterar por todos os produtos no grupo
-                        foreach ($group_items as $cart_item_key => $cart_item) {
-                            $product_id = $cart_item['product_id'];
-                            $quantity = $cart_item['quantity'];
-                            $processed_item_counts[$cart_item_key] = 0;
-                            
-                            // Processar cada unidade do produto
-                            for ($i = 0; $i < $quantity; $i++) {
-                                if ($current_count >= $max_items) {
-                                    // Esse grupo está cheio, criar um novo
-                                    $final_groups[] = $current_group;
-                                    $current_group = array();
-                                    $current_count = 0;
-                                }
-                                
-                                // Adicionar este item ao grupo atual
-                                if (empty($current_group) || !isset($current_group[$cart_item_key])) {
-                                    $current_group[$cart_item_key] = array(
-                                        'product_id' => $product_id,
-                                        'quantity' => 1,
-                                        'data' => $cart_item['data']
-                                    );
-                                } else {
-                                    $current_group[$cart_item_key]['quantity']++;
-                                }
-                                
-                                $processed_item_counts[$cart_item_key]++;
-                                $current_count++;
-                            }
-                        }
-                        
-                        // Adicionar o último grupo se não estiver vazio
-                        if (!empty($current_group)) {
-                            $final_groups[] = $current_group;
-                        }
-                    }
-                }
-                
-                // Verificar se há produtos empilháveis que não foram atribuídos a nenhum grupo
-                $ungrouped_products = array();
-                foreach ($stackable_products as $cart_item_key => $cart_item) {
-                    $found_in_group = false;
-                    foreach ($grouped_products as $group_id => $group_data) {
-                        if (isset($group_data['products'][$cart_item_key])) {
-                            $found_in_group = true;
-                            break;
-                        }
-                    }
-                    
-                    if (!$found_in_group) {
-                        $ungrouped_products[$cart_item_key] = $cart_item;
-                    }
-                }
-                
-                // Processar produtos empilháveis que não estão em nenhum grupo (usar lógica por produto)
-                if (!empty($ungrouped_products)) {
-                    $product_groups = array();
-                    foreach ($ungrouped_products as $cart_item_key => $cart_item) {
-                        $product_id = $cart_item['product_id'];
-                        
-                        if (!isset($product_groups[$product_id])) {
-                            $product_groups[$product_id] = array();
-                        }
-                        
-                        $product_groups[$product_id][$cart_item_key] = $cart_item;
-                    }
-                    
-                    foreach ($product_groups as $product_id => $items) {
-                        $max_stack = (int) get_post_meta($product_id, '_max_stack_same', true);
-                        if ($max_stack <= 0) {
-                            $max_stack = 1;
-                        }
-                        
-                        $current_group = array();
-                        $current_count = 0;
-                        
-                        foreach ($items as $cart_item_key => $cart_item) {
-                            $quantity = $cart_item['quantity'];
-                            
-                            for ($i = 0; $i < $quantity; $i++) {
-                                if ($current_count >= $max_stack) {
-                                    $final_groups[] = $current_group;
-                                    $current_group = array();
-                                    $current_count = 0;
-                                }
-                                
-                                if (empty($current_group)) {
-                                    $current_group[$cart_item_key] = array(
-                                        'product_id' => $product_id,
-                                        'quantity' => 1,
-                                        'data' => $cart_item['data']
-                                    );
-                                } else {
-                                    foreach ($current_group as $key => $item) {
-                                        if ($item['product_id'] == $product_id) {
-                                            $current_group[$key]['quantity']++;
-                                            break;
-                                        }
-                                    }
-                                }
-                                
-                                $current_count++;
-                            }
-                        }
-                        
-                        if (!empty($current_group)) {
-                            $final_groups[] = $current_group;
-                        }
-                    }
+                // Adicionar o último pacote do grupo se não estiver vazio
+                if (!empty($current_package)) {
+                    $packages[] = $current_package;
                 }
             }
             
-            return $final_groups;
+            // Adicionar produtos não empilháveis em pacotes separados
+            foreach ($non_stackable as $cart_item_key => $cart_item) {
+                $packages[] = array($cart_item_key => $cart_item);
+            }
+            
+            return $packages;
         }
 
         /**
          * Aplica as regras de empilhamento aos pacotes
          */
-        private function apply_stacking_rules($package, $stackable_groups) {
-            // Clonar o pacote para não modificar o original diretamente
-            $modified_package = $package;
+        private function apply_stacking_rules($package, $stacking_groups) {
+            if (empty($package['contents'])) {
+                return $package;
+            }
             
-            // Para cada grupo, calculamos as novas dimensões
-            foreach ($stackable_groups as $group) {
-                // Valores iniciais
-                $total_weight = 0;
-                $base_width = 0;
-                $base_length = 0;
-                $base_height = 0;
-                $additional_height = 0;
-                $additional_width = 0;
-                $additional_length = 0;
+            $modified_contents = array();
+            $total_height = 0;
+            $total_width = 0;
+            $total_length = 0;
+            $total_weight = 0;
+            
+            foreach ($package['contents'] as $cart_item_key => $cart_item) {
+                $product = $cart_item['data'];
+                $product_id = $product->get_id();
+                $quantity = $cart_item['quantity'];
                 
-                // Calcular as dimensões base e peso total
-                foreach ($group as $cart_item_key => $item) {
-                    $product = $item['data'];
-                    $quantity = $item['quantity'];
-                    $product_id = $item['product_id'];
-                    
-                    // Usar o primeiro produto como base
-                    if ($base_width == 0) {
-                        $base_width = $product->get_width();
-                        $base_length = $product->get_length();
-                        $base_height = $product->get_height();
+                // Obter configurações de empilhamento do produto
+                $product_settings = null;
+                
+                foreach ($stacking_groups as $group) {
+                    if (isset($group['products']) && in_array($product_id, $group['products'])) {
+                        $product_settings = isset($group['product_settings'][$product_id]) ? 
+                                          $group['product_settings'][$product_id] : 
+                                          array('min' => 1, 'max' => 1, 'increment' => 0);
+                        break;
                     }
+                }
+                
+                if ($product_settings) {
+                    // Calcular dimensões com base nos incrementos
+                    $height = $product->get_height();
+                    $width = $product->get_width();
+                    $length = $product->get_length();
                     
-                    // Pegar medidas
-                    $saved_configs = get_option('wc_stackable_shipping_products', array());
+                    // Aplicar incrementos apenas uma vez por grupo
+                    $height += $product_settings['increment'];
+                    $width += $product_settings['increment'];
+                    $length += $product_settings['increment'];
                     
-                    if (isset($saved_configs[$product_id])) {
-                        $height_increment = isset($saved_configs[$product_id]['height_increment']) ? $saved_configs[$product_id]['height_increment'] : '';
-                        $width_increment = isset($saved_configs[$product_id]['width_increment']) ? $saved_configs[$product_id]['width_increment'] : '';
-                        $length_increment = isset($saved_configs[$product_id]['length_increment']) ? $saved_configs[$product_id]['length_increment'] : '';
-                    } else {
-                        $height_increment = get_post_meta($product_id, '_stack_height_increment', true);
-                        $width_increment = get_post_meta($product_id, '_stack_width_increment', true);
-                        $length_increment = get_post_meta($product_id, '_stack_length_increment', true);
-                    }
+                    $total_height = max($total_height, $height);
+                    $total_width = max($total_width, $width);
+                    $total_length = max($total_length, $length);
+                    $total_weight += $product->get_weight() * $quantity;
                     
-                    if (empty($height_increment)) {
-                        $height_increment = $product->get_height(); // Se não definido, usa altura total
-                    }
-                    
-                    if ($quantity > 1) {
-                        $additional_height += ($quantity - 1) * floatval($height_increment);
-                        
-                        if (!empty($width_increment)) {
-                            $additional_width += ($quantity - 1) * floatval($width_increment);
-                        }
-                        
-                        if (!empty($length_increment)) {
-                            $additional_length += ($quantity - 1) * floatval($length_increment);
-                        }
-                    }
-                    
+                    // Atualizar dimensões do produto
+                    $product->set_height($height);
+                    $product->set_width($width);
+                    $product->set_length($length);
+                } else {
+                    // Produto não empilhável - usar dimensões originais
+                    $total_height = max($total_height, $product->get_height());
+                    $total_width = max($total_width, $product->get_width());
+                    $total_length = max($total_length, $product->get_length());
                     $total_weight += $product->get_weight() * $quantity;
                 }
                 
-                // Dimensões finais: base + incrementos adicionais
-                $final_height = $base_height + $additional_height;
-                $final_width = $base_width + $additional_width;
-                $final_length = $base_length + $additional_length;
-                
-                foreach ($group as $cart_item_key => $item) {
-                    $product = $modified_package['contents'][$cart_item_key]['data'];
-                    
-                    $product->set_width($final_width);
-                    $product->set_length($final_length);
-                    $product->set_height($final_height);
-                    $product->set_weight($total_weight);
-                    
-                    break;
-                }
+                $modified_contents[$cart_item_key] = $cart_item;
             }
             
-            return $modified_package;
+            // Atualizar dimensões do pacote
+            $package['contents'] = $modified_contents;
+            $package['dimensions'] = array(
+                'height' => $total_height,
+                'width' => $total_width,
+                'length' => $total_length,
+                'weight' => $total_weight
+            );
+            
+            return $package;
         }
 
         /**
