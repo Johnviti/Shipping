@@ -211,9 +211,91 @@ if (!class_exists('WC_Stackable_Shipping')) {
                 
                 // Adicionar filtro para depuração
                 add_filter('woocommerce_cart_shipping_packages', function($packages) {
-                    error_log('DEBUG - Pacotes de envio: ' . print_r($packages, true));
-                    return $packages;
-                }, 9999); // Prioridade alta para executar após todas as modificações
+                    $stacking_groups = get_option('wc_stackable_shipping_relationships', array());
+                    $stackable_products_config = get_option('wc_stackable_shipping_products', array());
+                    $cart = WC()->cart;
+                    if (!$cart) return $packages;
+                    $cart_items = $cart->get_cart();
+                    $destination = isset($packages[0]['destination']) ? $packages[0]['destination'] : array();
+                    $applied_coupons = $cart->get_applied_coupons();
+                    $user = array('ID' => get_current_user_id());
+
+                    $pacotes = array();
+                    $itens_nao_empilhaveis = array();
+
+                    // 1. Separar itens empilháveis e não empilháveis
+                    foreach ($cart_items as $cart_item_key => $item) {
+                        $product_id = $item['product_id'];
+                        $is_stackable = isset($stackable_products_config[$product_id]['is_stackable']) && $stackable_products_config[$product_id]['is_stackable'];
+                        if (!$is_stackable) {
+                            $itens_nao_empilhaveis[$cart_item_key] = $item;
+                        }
+                    }
+
+                    // 2. Processar cada grupo de empilhamento
+                    foreach ($stacking_groups as $group) {
+                        if (empty($group['products'])) continue;
+                        $produtos_grupo = $group['products'];
+                        $product_settings = isset($group['product_settings']) ? $group['product_settings'] : array();
+                        $itens_grupo = array();
+                        // Coletar itens do carrinho deste grupo
+                        foreach ($cart_items as $cart_item_key => $item) {
+                            $product_id = $item['product_id'];
+                            if (in_array($product_id, $produtos_grupo)) {
+                                $itens_grupo[$cart_item_key] = $item;
+                            }
+                        }
+                        // Enquanto houver itens, montar pacotes respeitando o máximo de cada produto
+                        while (count($itens_grupo) > 0) {
+                            $pacote = array(
+                                'contents' => array(),
+                                'contents_cost' => 0,
+                                'applied_coupons' => $applied_coupons,
+                                'user' => $user,
+                                'destination' => $destination,
+                            );
+                            $algum_adicionado = false;
+                            foreach ($itens_grupo as $cart_item_key => $item) {
+                                $product_id = $item['product_id'];
+                                $settings = isset($product_settings[$product_id]) ? $product_settings[$product_id] : array('min'=>1,'max'=>1,'increment'=>0);
+                                $max = isset($settings['max']) ? intval($settings['max']) : 1;
+                                $qtd = $item['quantity'];
+                                if ($qtd > 0) {
+                                    $add = min($qtd, $max);
+                                    $novo_item = $item;
+                                    $novo_item['quantity'] = $add;
+                                    $pacote['contents'][$cart_item_key] = $novo_item;
+                                    $pacote['contents_cost'] += $item['data']->get_price() * $add;
+                                    $itens_grupo[$cart_item_key]['quantity'] -= $add;
+                                    if ($itens_grupo[$cart_item_key]['quantity'] <= 0) {
+                                        unset($itens_grupo[$cart_item_key]);
+                                    }
+                                    $algum_adicionado = true;
+                                }
+                            }
+                            if ($algum_adicionado) {
+                                $pacotes[] = $pacote;
+                            } else {
+                                break;
+                            }
+                        }
+                    }
+                    // 3. Adicionar itens não empilháveis em um pacote separado
+                    if (!empty($itens_nao_empilhaveis)) {
+                        $pacote = array(
+                            'contents' => $itens_nao_empilhaveis,
+                            'contents_cost' => 0,
+                            'applied_coupons' => $applied_coupons,
+                            'user' => $user,
+                            'destination' => $destination,
+                        );
+                        foreach ($itens_nao_empilhaveis as $item) {
+                            $pacote['contents_cost'] += $item['line_total'];
+                        }
+                        $pacotes[] = $pacote;
+                    }
+                    return $pacotes;
+                }, 20);
                 
                 return $modified_packages;
             }
