@@ -1,0 +1,13 @@
+/* Clean and WP-like styling adjustments */
+#sps-products-table .sps-product-row td, #sps-groups-table tr td {
+    vertical-align: middle;
+}
+.sps-remove-product .dashicons-trash {
+    color: #a00;
+}
+.sps-remove-product:hover .dashicons-trash {
+    color: #d00;
+}
+#sps-groups-search {
+    max-width: 300px;
+}
