@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name: Stackable Product Shipping v6.1.0
+Plugin Name: Stackable Product Shipping v6.2.3
 Description: Permite criar grupos de empilhamento de produtos para cálculo de frete otimizado.
-Version: v6.0.0
+Version: v6.2.3
 Author: WPlugin
 */
 
@@ -17,34 +17,10 @@ require_once SPS_PLUGIN_DIR . 'includes/class-sps-groups-table.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-admin.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-shipping-matcher.php';
 
-// Modify the require_once line for the shipping class
-// Instead of directly requiring the file, we'll check if WooCommerce is active first
-
-// Remove or comment out this line:
-// require_once SPS_PLUGIN_DIR . 'includes/class-sps-central-do-frete-shipping.php';
-
-// Add a function to check if WooCommerce is active before loading our shipping class
-function sps_check_woocommerce_active() {
-    if (class_exists('WooCommerce')) {
-        require_once SPS_PLUGIN_DIR . 'includes/class-sps-central-do-frete-shipping.php';
-    }
-}
-add_action('plugins_loaded', 'sps_check_woocommerce_active', 20);
-
-// Also modify the shipping init function to check for WooCommerce
-function sps_central_do_frete_shipping_init() {
-    if (class_exists('WooCommerce') && !class_exists('SPS_Central_Do_Frete_Shipping_Method')) {
-        require_once SPS_PLUGIN_DIR . 'includes/class-sps-central-do-frete-shipping.php';
-    }
-}
-// Adicionar a ação para inicializar o método de envio
-add_action('woocommerce_shipping_init', 'sps_central_do_frete_shipping_init');
-
-add_filter('woocommerce_shipping_methods', 'sps_add_central_do_frete_shipping_method');
-function sps_add_central_do_frete_shipping_method($methods) {
-    $methods['sps_central_do_frete'] = 'SPS_Central_Do_Frete_Shipping_Method';
-    return $methods;
-}
+register_activation_hook(__FILE__, ['SPS_Install','install']);
+new SPS_Ajax();
+add_action('admin_menu', ['SPS_Admin','register_menu']);
+add_action('admin_enqueue_scripts', ['SPS_Admin','enqueue_scripts']);
 
 // Filtro para alterar os pacotes de frete do WooCommerce
 add_filter('woocommerce_cart_shipping_packages', function($packages) {
@@ -182,25 +158,6 @@ add_action('woocommerce_checkout_create_order', function($order, $data) {
     if ($pacotes_info) {
         $order->update_meta_data('_sps_pacotes_info', wp_json_encode($pacotes_info));
     }
-    
-    // Salvar informações do método de envio da Central do Frete
-    $chosen_shipping_methods = WC()->session->get('chosen_shipping_methods');
-    if (!empty($chosen_shipping_methods)) {
-        foreach ($chosen_shipping_methods as $method_id) {
-            if (strpos($method_id, 'sps_central_do_frete') === 0) {
-                $shipping_packages = WC()->shipping()->get_packages();
-                foreach ($shipping_packages as $package_key => $package) {
-                    if (isset($package['rates'][$method_id])) {
-                        $meta_data = $package['rates'][$method_id]->get_meta_data();
-                        if (!empty($meta_data)) {
-                            $order->update_meta_data('_sps_central_do_frete_details', wp_json_encode($meta_data));
-                            break 2;
-                        }
-                    }
-                }
-            }
-        }
-    }
 }, 10, 2);
 
 // Exibe resumo dos pacotes no carrinho
@@ -240,58 +197,3 @@ add_action('woocommerce_after_cart_table', function() {
     echo '</div>';
 });
 
-// Adicionar estilos para melhorar a exibição das opções de frete
-add_action('wp_head', function() {
-    ?>
-    <style>
-        .woocommerce-shipping-methods li {
-            margin-bottom: 10px !important;
-            padding: 8px !important;
-            border-radius: 4px !important;
-            transition: background-color 0.2s !important;
-        }
-        .woocommerce-shipping-methods li:hover {
-            background-color: #f8f8f8 !important;
-        }
-        .woocommerce-shipping-methods li label {
-            display: flex !important;
-            align-items: center !important;
-            justify-content: space-between !important;
-            width: 100% !important;
-        }
-        .woocommerce-shipping-methods li .shipping-method-description {
-            display: block !important;
-            font-size: 0.85em !important;
-            color: #666 !important;
-            margin-top: 3px !important;
-        }
-    </style>
-    <?php
-});
-
-// Adicionar informações adicionais às opções de frete
-add_filter('woocommerce_cart_shipping_method_full_label', function($label, $method) {
-    if (strpos($method->id, 'sps_central_do_frete') === 0) {
-        $meta_data = $method->get_meta_data();
-        $description = '';
-        
-        if (!empty($meta_data['delivery_time'])) {
-            $description .= '<span class="shipping-method-description">';
-            $description .= 'Prazo de entrega: ' . esc_html($meta_data['delivery_time']) . ' dias';
-            
-            if (!empty($meta_data['modal'])) {
-                $description .= ' | Modal: ' . esc_html($meta_data['modal']);
-            }
-            
-            if (!empty($meta_data['dispatch']) && !empty($meta_data['delivery'])) {
-                $description .= ' | ' . esc_html($meta_data['dispatch']) . ' → ' . esc_html($meta_data['delivery']);
-            }
-            
-            $description .= '</span>';
-        }
-        
-        return $label . $description;
-    }
-    
-    return $label;
-}, 10, 2);
