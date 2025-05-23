@@ -12,45 +12,19 @@ class SPS_Admin {
         error_log('SPS: Nonce check passed');
 
         // Get token and cargo types from WooCommerce shipping method
-        $token = '';
+        $token = get_option('sps_api_token');
+
         $cargo_types = ['28']; // Default cargo type
         
         // Try to get settings from WooCommerce shipping methods
         $shipping_methods = WC()->shipping()->get_shipping_methods();
         if (isset($shipping_methods['central_do_frete'])) {
             $central_do_frete = $shipping_methods['central_do_frete'];
-            $token = $central_do_frete->get_option('api_token');
             $cargo_types_str = $central_do_frete->get_option('cargo_types');
             if (!empty($cargo_types_str)) {
                 $cargo_types = array_map('intval', explode(',', $cargo_types_str));
             }
             error_log('SPS: Got token from shipping method: ' . substr($token, 0, 4) . '...' . substr($token, -4));
-        }
-        
-        // Fallback to direct option retrieval if method not available
-        if (empty($token)) {
-            error_log('SPS: Token not found in shipping method, trying options');
-            $token = get_option('woocommerce_central_do_frete_api_token');
-            if (empty($token)) {
-                $token = get_option('central_do_frete_api_token');
-                if (empty($token)) {
-                    $token = get_option('sps_api_token');
-                    if (empty($token)) {
-                        // Last resort - try to get from instance settings
-                        $instances = get_option('woocommerce_central_do_frete_settings');
-                        if (is_array($instances) && isset($instances['api_token'])) {
-                            $token = $instances['api_token'];
-                            error_log('SPS: Found token in instance settings');
-                        }
-                    } else {
-                        error_log('SPS: Found token in sps_api_token option');
-                    }
-                } else {
-                    error_log('SPS: Found token in central_do_frete_api_token option');
-                }
-            } else {
-                error_log('SPS: Found token in woocommerce_central_do_frete_api_token option');
-            }
         }
         
         $origin = preg_replace('/\D/', '', sanitize_text_field($_POST['origin']));
@@ -146,7 +120,7 @@ class SPS_Admin {
             'httpversion' => '1.1',
             'headers' => [
                 'Content-Type' => 'application/json',
-                'Authorization' => 'Bearer ' . $token
+                'Authorization' => $token
             ],
             'body' => json_encode($request_data),
             'sslverify' => false
@@ -238,6 +212,7 @@ class SPS_Admin {
     public static function register_ajax_handlers() {
         add_action('wp_ajax_sps_simulate_shipping', [__CLASS__, 'ajax_simulate_shipping']);
         add_action('wp_ajax_sps_simulate_group_shipping', [__CLASS__, 'ajax_simulate_group_shipping']);
+        add_action('wp_ajax_sps_search_products', [__CLASS__, 'ajax_search_products']);
     }
 
     public static function enqueue_scripts($hook) {
@@ -250,7 +225,7 @@ class SPS_Admin {
         // Localize script to pass Ajax URL and nonce
         wp_localize_script('sps-admin-js', 'sps_admin_ajax', array(
             'ajax_url' => admin_url('admin-ajax.php'),
-            'nonce' => wp_create_nonce('sps_simulate_shipping'),
+            'nonce' => wp_create_nonce('sps_ajax_nonce'),
             'simulate_shipping_nonce' => wp_create_nonce('sps_simulate_shipping'),
             'simulate_group_shipping_nonce' => wp_create_nonce('sps_simulate_group_shipping')
         ));
@@ -398,13 +373,7 @@ class SPS_Admin {
                     
                     <?php
                     // Get token from options and anonymize it
-                    $token = get_option('woocommerce_central_do_frete_api_token');
-                    if (empty($token)) {
-                        $token = get_option('central_do_frete_api_token');
-                        if (empty($token)) {
-                            $token = get_option('sps_api_token');
-                        }
-                    }
+                    $token = get_option('sps_api_token');
                     
                     // Get test CEPs
                     $test_origin_cep = get_option('sps_test_origin_cep', '01001000');

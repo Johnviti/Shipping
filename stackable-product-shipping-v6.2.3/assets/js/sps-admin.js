@@ -89,7 +89,7 @@ jQuery(document).ready(function($) {
                 group_id: groupId,
                 origin: origin,
                 destination: destination,
-                nonce: '<?php echo wp_create_nonce('sps_simulate_group_shipping'); ?>'
+                nonce: sps_admin_ajax.simulate_shipping_nonce
             },
             success: function(response) {
                 $('.sps-simulation-loading').hide();
