@@ -22,6 +22,19 @@ new SPS_Ajax();
 add_action('admin_menu', ['SPS_Admin','register_menu']);
 add_action('admin_enqueue_scripts', ['SPS_Admin','enqueue_scripts']);
 
+// Register AJAX handlers
+add_action('init', ['SPS_Admin', 'register_ajax_handlers']);
+
+// Enqueue frontend scripts
+add_action('wp_enqueue_scripts', 'sps_enqueue_frontend_scripts');
+function sps_enqueue_frontend_scripts() {
+    wp_enqueue_script('sps-frontend-js', SPS_PLUGIN_URL . 'assets/js/sps-frontend.js', array('jquery'), null, true);
+    wp_localize_script('sps-frontend-js', 'sps_ajax', array(
+        'ajax_url' => admin_url('admin-ajax.php'),
+        'nonce' => wp_create_nonce('sps_ajax_nonce')
+    ));
+}
+
 // Filtro para alterar os pacotes de frete do WooCommerce
 add_filter('woocommerce_cart_shipping_packages', function($packages) {
     if (is_admin() && !defined('DOING_AJAX')) return $packages;

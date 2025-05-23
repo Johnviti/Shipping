@@ -5,7 +5,11 @@ class SPS_Admin {
      * AJAX handler for shipping simulation
      */
     public static function ajax_simulate_shipping() {
+        // Add logging
+        error_log('SPS: Starting shipping simulation');
+        
         check_ajax_referer('sps_simulate_shipping', 'nonce');
+        error_log('SPS: Nonce check passed');
 
         // Get token and cargo types from WooCommerce shipping method
         $token = '';
@@ -20,47 +24,171 @@ class SPS_Admin {
             if (!empty($cargo_types_str)) {
                 $cargo_types = array_map('intval', explode(',', $cargo_types_str));
             }
+            error_log('SPS: Got token from shipping method: ' . substr($token, 0, 4) . '...' . substr($token, -4));
         }
         
         // Fallback to direct option retrieval if method not available
         if (empty($token)) {
+            error_log('SPS: Token not found in shipping method, trying options');
             $token = get_option('woocommerce_central_do_frete_api_token');
             if (empty($token)) {
                 $token = get_option('central_do_frete_api_token');
                 if (empty($token)) {
-                    // Last resort - try to get from instance settings
-                    $instances = get_option('woocommerce_central_do_frete_settings');
-                    if (is_array($instances) && isset($instances['api_token'])) {
-                        $token = $instances['api_token'];
+                    $token = get_option('sps_api_token');
+                    if (empty($token)) {
+                        // Last resort - try to get from instance settings
+                        $instances = get_option('woocommerce_central_do_frete_settings');
+                        if (is_array($instances) && isset($instances['api_token'])) {
+                            $token = $instances['api_token'];
+                            error_log('SPS: Found token in instance settings');
+                        }
+                    } else {
+                        error_log('SPS: Found token in sps_api_token option');
                     }
+                } else {
+                    error_log('SPS: Found token in central_do_frete_api_token option');
                 }
+            } else {
+                error_log('SPS: Found token in woocommerce_central_do_frete_api_token option');
             }
         }
         
         $origin = preg_replace('/\D/', '', sanitize_text_field($_POST['origin']));
         $destination = preg_replace('/\D/', '', sanitize_text_field($_POST['destination']));
         
-        // Override cargo types if provided in the request
-        $cargo_types = isset($_POST['cargo_types']) ? (array) $_POST['cargo_types'] : $cargo_types;
+        error_log('SPS: Origin: ' . $origin . ', Destination: ' . $destination);
         
-        $value = floatval($_POST['value']);
+        // Override cargo types if provided in the request
+        if (isset($_POST['cargo_types']) && is_array($_POST['cargo_types'])) {
+            $cargo_types = array_map('intval', $_POST['cargo_types']);
+            error_log('SPS: Using cargo types from request: ' . implode(',', $cargo_types));
+        } else {
+            // Try to get from saved option
+            $cargo_types_option = get_option('sps_cargo_types', '28');
+            if (!empty($cargo_types_option)) {
+                $cargo_types = array_map('intval', explode(',', $cargo_types_option));
+                error_log('SPS: Using cargo types from option: ' . implode(',', $cargo_types));
+            }
+        }
+        
+        $value = isset($_POST['value']) ? floatval($_POST['value']) : 100;
         $is_separate = isset($_POST['separate']) ? (bool) $_POST['separate'] : false;
+        
+        error_log('SPS: Value: ' . $value . ', Is separate: ' . ($is_separate ? 'true' : 'false'));
         
         // Get volumes from the request
         $volumes = [];
         if (isset($_POST['volumes'])) {
-            $volumes = json_decode(stripslashes($_POST['volumes']), true);
-            if (!is_array($volumes)) {
-                $volumes = [];
+            error_log('SPS: Volumes parameter found, type: ' . gettype($_POST['volumes']));
+            
+            // Handle both JSON string and array formats
+            if (is_string($_POST['volumes'])) {
+                error_log('SPS: Volumes is a string, attempting to decode JSON');
+                $volumes_data = json_decode(stripslashes($_POST['volumes']), true);
+                if (is_array($volumes_data)) {
+                    $volumes = $volumes_data;
+                    error_log('SPS: Successfully decoded volumes JSON: ' . print_r($volumes, true));
+                } else {
+                    error_log('SPS: Failed to decode volumes JSON. Error: ' . json_last_error_msg());
+                    error_log('SPS: Raw volumes data: ' . $_POST['volumes']);
+                }
+            } elseif (is_array($_POST['volumes'])) {
+                $volumes = $_POST['volumes'];
+                error_log('SPS: Volumes is already an array: ' . print_r($volumes, true));
             }
+        } else {
+            error_log('SPS: No volumes parameter found in request');
         }
         
-        if (empty($token) || empty($origin) || empty($destination) || empty($volumes)) {
-            wp_send_json_error(['message' => 'Parâmetros inválidos']);
+        if (empty($token)) {
+            error_log('SPS: Token is empty, returning error');
+            wp_send_json_error(['message' => 'Token da API não configurado. Por favor, configure nas opções do plugin.']);
             return;
         }
         
-        // Rest of the function remains the same...
+        if (empty($origin)) {
+            error_log('SPS: Origin is empty, returning error');
+            wp_send_json_error(['message' => 'CEP de origem inválido ou não informado.']);
+            return;
+        }
+        
+        if (empty($destination)) {
+            error_log('SPS: Destination is empty, returning error');
+            wp_send_json_error(['message' => 'CEP de destino inválido ou não informado.']);
+            return;
+        }
+        
+        if (empty($volumes)) {
+            error_log('SPS: Volumes is empty, returning error');
+            wp_send_json_error(['message' => 'Nenhum volume informado para cotação.']);
+            return;
+        }
+        
+        // Prepare API request data
+        $request_data = [
+            'from' => ['postal_code' => $origin],
+            'to' => ['postal_code' => $destination],
+            'cargo_types' => $cargo_types,
+            'invoice_amount' => $value,
+            'volumes' => $volumes,
+            'recipient' => ['document' => null, 'name' => null]
+        ];
+        
+        error_log('SPS: Prepared API request data: ' . json_encode($request_data));
+        
+        // Make API request
+        $api_url = 'https://api.centraldofrete.com/v1/quotation';
+        
+        $args = [
+            'method' => 'POST',
+            'timeout' => 30,
+            'redirection' => 5,
+            'httpversion' => '1.1',
+            'headers' => [
+                'Content-Type' => 'application/json',
+                'Authorization' => 'Bearer ' . $token
+            ],
+            'body' => json_encode($request_data),
+            'sslverify' => false
+        ];
+        
+        error_log('SPS: Making API request to: ' . $api_url);
+        $response = wp_remote_post($api_url, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('SPS: API request failed: ' . $response->get_error_message());
+            wp_send_json_error(['message' => 'Erro na API: ' . $response->get_error_message()]);
+            return;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        error_log('SPS: API response status code: ' . $status_code);
+        
+        $body = wp_remote_retrieve_body($response);
+        error_log('SPS: API response body: ' . $body);
+        
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('SPS: Failed to decode API response: ' . json_last_error_msg());
+            wp_send_json_error(['message' => 'Erro ao decodificar resposta da API: ' . json_last_error_msg()]);
+            return;
+        }
+        
+        if (isset($data['error'])) {
+            error_log('SPS: API returned error: ' . $data['error']);
+            wp_send_json_error(['message' => 'Erro retornado pela API: ' . $data['error']]);
+            return;
+        }
+        
+        if (!isset($data['prices']) || !is_array($data['prices'])) {
+            error_log('SPS: Invalid API response format, prices not found or not an array');
+            wp_send_json_error(['message' => 'Formato de resposta inválido da API.']);
+            return;
+        }
+        
+        error_log('SPS: API request successful, returning ' . count($data['prices']) . ' prices');
+        wp_send_json_success($data);
     }
 
     /**
@@ -102,9 +230,14 @@ class SPS_Admin {
         add_submenu_page('sps-main','Criar Novo','Criar Novo','manage_options','sps-create',[__CLASS__,'create_page']);
         add_submenu_page('sps-main','Grupos Salvos','Grupos Salvos','manage_options','sps-groups',[__CLASS__,'groups_page']);
         add_submenu_page('sps-main','Configurações','Configurações','manage_options','sps-settings',[__CLASS__,'settings_page']);
-        
-        // Register AJAX handler for shipping simulation
+    }
+
+    /**
+     * Register AJAX handlers - this needs to be called separately
+     */
+    public static function register_ajax_handlers() {
         add_action('wp_ajax_sps_simulate_shipping', [__CLASS__, 'ajax_simulate_shipping']);
+        add_action('wp_ajax_sps_simulate_group_shipping', [__CLASS__, 'ajax_simulate_group_shipping']);
     }
 
     public static function enqueue_scripts($hook) {
@@ -113,6 +246,14 @@ class SPS_Admin {
         wp_enqueue_style('select2-css','https://cdn.jsdelivr.net/npm/select2@4.1.0-rc.0/dist/css/select2.min.css');
         wp_enqueue_script('sps-admin-js',SPS_PLUGIN_URL.'assets/js/sps-admin.js',['jquery','select2','jquery-ui-sortable'],null,true);
         wp_enqueue_style('sps-admin-css', SPS_PLUGIN_URL.'assets/css/sps-admin.css');
+        
+        // Localize script to pass Ajax URL and nonce
+        wp_localize_script('sps-admin-js', 'sps_admin_ajax', array(
+            'ajax_url' => admin_url('admin-ajax.php'),
+            'nonce' => wp_create_nonce('sps_simulate_shipping'),
+            'simulate_shipping_nonce' => wp_create_nonce('sps_simulate_shipping'),
+            'simulate_group_shipping_nonce' => wp_create_nonce('sps_simulate_group_shipping')
+        ));
     }
 
     public static function main_page() {
@@ -241,15 +382,10 @@ class SPS_Admin {
                             <input type="number" step="0.01" name="sps_group_height" value="<?php echo esc_attr($group['height']); ?>" placeholder="Altura"> ×
                             <input type="number" step="0.01" name="sps_group_width" value="<?php echo esc_attr($group['width']); ?>" placeholder="Largura"> ×
                             <input type="number" step="0.01" name="sps_group_length" value="<?php echo esc_attr($group['length']); ?>" placeholder="Comprimento">
+                            <p class="description">Simule o frete para comparar os valores entre produtos separados e empilhados. <a href="javascript:void(0);" class="sps-simulate-shipping-link">Clique aqui!</a> </p>
                         </td>
-                    </tr>
-                    <tr>
-                        <th><label>Simulação de Frete</label></th>
-                        <td>
-                            <button type="button" id="sps-simulate-shipping" class="button button-secondary">Simular Frete</button>
-                            <p class="description">Simule o frete para comparar os valores entre produtos separados e empilhados.</p>
-                        </td>
-                    </tr>
+                        <!-- <button type="button"  class="button button-secondary">Simular Frete</button> -->
+                        </tr>
                 </table>
                 <?php submit_button($editing ? 'Atualizar Empilhamento' : 'Salvar Empilhamento', 'primary', 'sps_save_group'); ?>
             </form>
@@ -446,371 +582,118 @@ class SPS_Admin {
                         </div>
                     </div>
                 </div>
-            </div>
-            
-            <style>
-                .sps-modal {
-                    position: fixed;
-                    z-index: 9999;
-                    left: 0;
-                    top: 0;
-                    width: 100%;
-                    height: 100%;
-                    overflow: auto;
-                    background-color: rgba(0,0,0,0.4);
-                }
-                
-                .sps-modal-content {
-                    background-color: #fefefe;
-                    margin: 5% auto;
-                    padding: 20px;
-                    border: 1px solid #888;
-                    width: 80%;
-                    max-width: 900px;
-                    border-radius: 4px;
-                    box-shadow: 0 4px 8px rgba(0,0,0,0.1);
-                }
-                
-                .sps-modal-close {
-                    color: #aaa;
-                    float: right;
-                    font-size: 28px;
-                    font-weight: bold;
-                    cursor: pointer;
-                }
-                
-                .sps-modal-close:hover {
-                    color: black;
-                }
-                
-                .sps-form-row {
-                    margin-bottom: 15px;
-                }
-                
-                .sps-form-row label {
-                    display: block;
-                    margin-bottom: 5px;
-                    font-weight: bold;
-                }
-                
-                .sps-simulation-tabs, .sps-input-tabs {
-                    margin: 20px 0;
-                    border-bottom: 1px solid #ccc;
-                }
-                
-                .sps-tab-button {
-                    background-color: #f1f1f1;
-                    border: 1px solid #ccc;
-                    border-bottom: none;
-                    padding: 10px 15px;
-                    cursor: pointer;
-                    margin-right: 5px;
-                    border-radius: 4px 4px 0 0;
-                }
-                
-                .sps-tab-button.active {
-                    background-color: #fff;
-                    border-bottom: 1px solid #fff;
-                    margin-bottom: -1px;
-                }
-                
-                .sps-tab-content, .sps-input-content {
-                    padding: 15px 0;
-                }
-                
-                .sps-simulation-loading {
-                    text-align: center;
-                    padding: 20px;
-                }
-                
-                .sps-simulation-error {
-                    color: #721c24;
-                    background-color: #f8d7da;
-                    border: 1px solid #f5c6cb;
-                    padding: 10px;
-                    border-radius: 4px;
-                    margin-bottom: 15px;
-                }
-                
-                .sps-economy-positive {
-                    color: green;
-                    font-weight: bold;
-                }
-                
-                .sps-economy-negative {
-                    color: red;
-                    font-weight: bold;
-                }
-                
-                #sps-individual-products-table input {
-                    width: 100%;
-                }
-            </style>
-            
-            <script>
-                jQuery(document).ready(function($) {
-                    // Abrir modal de simulação
-                    $('#sps-simulate-shipping').on('click', function(e) {
-                        e.preventDefault();
-                        $('#sps-shipping-simulation-modal').show();
-                    });
-                    
-                    // Fechar modal
-                    $('.sps-modal-close').on('click', function() {
-                        $('#sps-shipping-simulation-modal').hide();
-                    });
-                    
-                    // Fechar modal ao clicar fora
-                    $(window).on('click', function(e) {
-                        if ($(e.target).is('.sps-modal')) {
-                            $('.sps-modal').hide();
-                        }
-                    });
-                    
-                    // Alternar entre abas de resultados
-                    $('.sps-simulation-tabs .sps-tab-button').on('click', function() {
-                        $('.sps-simulation-tabs .sps-tab-button').removeClass('active');
-                        $(this).addClass('active');
-                        
-                        $('.sps-tab-content').hide();
-                        $('#sps-tab-' + $(this).data('tab')).show();
-                    });
-                    
-                    // Alternar entre abas de entrada
-                    $('.sps-input-tabs .sps-tab-button').on('click', function() {
-                        $('.sps-input-tabs .sps-tab-button').removeClass('active');
-                        $(this).addClass('active');
-                        
-                        $('.sps-input-content').hide();
-                        $('#sps-input-' + $(this).data('input-tab')).show();
-                    });
-                    
-                    // Adicionar produto individual
-                    $('#sps-add-ind-product').on('click', function() {
-                        const newRow = `
-                            <tr class="sps-individual-product-row">
-                                <td><input type="number" class="sps-ind-quantity" value="1" min="1"></td>
-                                <td><input type="number" class="sps-ind-width" value="10" min="1" step="0.01"></td>
-                                <td><input type="number" class="sps-ind-height" value="10" min="1" step="0.01"></td>
-                                <td><input type="number" class="sps-ind-length" value="10" min="1" step="0.01"></td>
-                                <td><input type="number" class="sps-ind-weight" value="0.5" min="0.01" step="0.01"></td>
-                                <td><button type="button" class="button sps-remove-ind-product">Remover</button></td>
-                            </tr>
-                        `;
-                        $('#sps-individual-products-table tbody').append(newRow);
-                    });
-                    
-                    // Remover produto individual
-                    $(document).on('click', '.sps-remove-ind-product', function() {
-                        if ($('.sps-individual-product-row').length > 1) {
-                            $(this).closest('tr').remove();
-                        } else {
-                            alert('É necessário pelo menos um produto.');
-                        }
-                    });
-                    
-                    // Executar simulação
-                    $('#sps-run-simulation').on('click', function() {
-                        // Validar campos
-                        const origin = $('#sps-simulation-origin').val().replace(/\D/g, '');
-                        const destination = $('#sps-simulation-destination').val().replace(/\D/g, '');
-                        const value = parseFloat($('#sps-simulation-value').val()) || 100;
-                        
-                        if (!origin || !destination) {
-                            alert('Por favor, preencha os CEPs de origem e destino.');
-                            return;
-                        }
-                        
-                        // Mostrar loading
-                        $('#sps-simulation-results').show();
-                        $('.sps-simulation-loading').show();
-                        $('.sps-simulation-error, .sps-simulation-success').hide();
-                        
-                        // Preparar volumes para pacote empilhado
-                        const stackedVolume = {
-                            quantity: parseInt($('#sps-stacked-quantity').val()) || 3,
-                            width: parseFloat($('#sps-stacked-width').val()) || 20,
-                            height: parseFloat($('#sps-stacked-height').val()) || 20,
-                            length: parseFloat($('#sps-stacked-length').val()) || 20,
-                            weight: parseFloat($('#sps-stacked-weight').val()) || 1
-                        };
-                        
-                        // Preparar volumes para produtos individuais
-                        const individualVolumes = [];
-                        $('.sps-individual-product-row').each(function() {
-                            const row = $(this);
-                            individualVolumes.push({
-                                quantity: parseInt(row.find('.sps-ind-quantity').val()) || 4,
-                                width: parseFloat(row.find('.sps-ind-width').val()) || 10,
-                                height: parseFloat(row.find('.sps-ind-height').val()) || 10,
-                                length: parseFloat(row.find('.sps-ind-length').val()) || 10,
-                                weight: parseFloat(row.find('.sps-ind-weight').val()) || 0.5
-                            });
-                        });
-                        
-                        // Fazer requisições AJAX para produtos separados e combinados
-                        $.ajax({
-                            url: ajaxurl,
-                            type: 'POST',
-                            data: {
-                                action: 'sps_simulate_shipping',
-                                origin: origin,
-                                destination: destination,
-                                cargo_types: ['28'],
-                                value: value,
-                                separate: true,
-                                volumes: JSON.stringify(individualVolumes),
-                                nonce: '<?php echo wp_create_nonce('sps_simulate_shipping'); ?>'
-                            },
-                            dataType: 'json',
-                            success: function(separateResponse) {
-                                console.log('Separate response:', separateResponse);
-                                // Fazer segunda requisição para pacote combinado
-                                $.ajax({
-                                    url: ajaxurl,
-                                    type: 'POST',
-                                    data: {
-                                        action: 'sps_simulate_shipping',
-                                        origin: origin,
-                                        destination: destination,
-                                        cargo_types: ['28'],
-                                        value: value,
-                                        separate: false,
-                                        volumes: JSON.stringify([stackedVolume]),
-                                        nonce: '<?php echo wp_create_nonce('sps_simulate_shipping'); ?>'
-                                    },
-                                    dataType: 'json',
-                                    success: function(combinedResponse) {
-                                        console.log('Combined response:', combinedResponse);
-                                        $('.sps-simulation-loading').hide();
-                                        
-                                        if (separateResponse.success && combinedResponse.success) {
-                                            $('.sps-simulation-success').show();
-                                            
-                                            // Preencher tabelas com resultados
-                                            displayResults(separateResponse.data, combinedResponse.data);
-                                        } else {
-                                            $('.sps-simulation-error').show();
-                                            $('.sps-error-message').text(
-                                                (separateResponse.data && separateResponse.data.message) || 
-                                                (combinedResponse.data && combinedResponse.data.message) || 
-                                                'Erro ao consultar a API.'
-                                            );
-                                        }
-                                    },
-                                    error: function(xhr, status, error) {
-                                        console.error('Combined request error:', xhr, status, error);
-                                        $('.sps-simulation-loading').hide();
-                                        $('.sps-simulation-error').show();
-                                        $('.sps-error-message').text('Erro ao comunicar com o servidor: ' + error);
-                                    }
-                                });
-                            },
-                            error: function(xhr, status, error) {
-                                console.error('Separate request error:', xhr, status, error);
-                                $('.sps-simulation-loading').hide();
-                                $('.sps-simulation-error').show();
-                                $('.sps-error-message').text('Erro ao comunicar com o servidor: ' + error);
-                            }
-                        });
-                    });
-                    
-                    // Função para exibir os resultados nas tabelas
-                    function displayResults(separateData, combinedData) {
-                        const $separateResults = $('#sps-separate-results');
-                        const $combinedResults = $('#sps-combined-results');
-                        const $comparisonResults = $('#sps-comparison-results');
-                        
-                        $separateResults.empty();
-                        $combinedResults.empty();
-                        $comparisonResults.empty();
-                        
-                        // Preencher tabela de produtos separados
-                        if (separateData.prices && separateData.prices.length > 0) {
-                            separateData.prices.forEach(function(price) {
-                                $separateResults.append(`
-                                    <tr>
-                                        <td>${price.shipping_carrier}</td>
-                                        <td>R$ ${price.price.toFixed(2)}</td>
-                                        <td>${price.delivery_time}</td>
-                                        <td>${price.service_type || 'Padrão'}</td>
-                                    </tr>
-                                `);
-                            });
-                        } else {
-                            $separateResults.append('<tr><td colspan="4">Nenhum resultado encontrado</td></tr>');
-                        }
-                        
-                        // Preencher tabela de pacote combinado
-                        if (combinedData.prices && combinedData.prices.length > 0) {
-                            combinedData.prices.forEach(function(price) {
-                                $combinedResults.append(`
-                                    <tr>
-                                        <td>${price.shipping_carrier}</td>
-                                        <td>R$ ${price.price.toFixed(2)}</td>
-                                        <td>${price.delivery_time}</td>
-                                        <td>${price.service_type || 'Padrão'}</td>
-                                    </tr>
-                                `);
-                            });
-                        } else {
-                            $combinedResults.append('<tr><td colspan="4">Nenhum resultado encontrado</td></tr>');
-                        }
-                        
-                        // Preencher tabela de comparação
-                        const carriers = new Set();
-                        const priceMap = {};
-                        
-                        if (separateData.prices) {
-                            separateData.prices.forEach(function(price) {
-                                carriers.add(price.shipping_carrier);
-                                if (!priceMap[price.shipping_carrier]) {
-                                    priceMap[price.shipping_carrier] = {};
-                                }
-                                priceMap[price.shipping_carrier].separate = price.price;
-                            });
-                        }
-                        
-                        if (combinedData.prices) {
-                            combinedData.prices.forEach(function(price) {
-                                carriers.add(price.shipping_carrier);
-                                if (!priceMap[price.shipping_carrier]) {
-                                    priceMap[price.shipping_carrier] = {};
-                                }
-                                priceMap[price.shipping_carrier].combined = price.price;
-                            });
-                        }
-                        
-                        carriers.forEach(function(carrier) {
-                            const separatePrice = priceMap[carrier].separate || 0;
-                            const combinedPrice = priceMap[carrier].combined || 0;
-                            
-                            if (separatePrice && combinedPrice) {
-                                const economy = separatePrice - combinedPrice;
-                                const economyPercent = (economy / separatePrice) * 100;
-                                const economyClass = economy > 0 ? 'sps-economy-positive' : 'sps-economy-negative';
-                                
-                                $comparisonResults.append(`
-                                    <tr>
-                                        <td>${carrier}</td>
-                                        <td>R$ ${separatePrice.toFixed(2)}</td>
-                                        <td>R$ ${combinedPrice.toFixed(2)}</td>
-                                        <td class="${economyClass}">R$ ${economy.toFixed(2)}</td>
-                                        <td class="${economyClass}">${economyPercent.toFixed(2)}%</td>
-                                    </tr>
-                                `);
-                            }
-                        });
-                        
-                        if ($comparisonResults.children().length === 0) {
-                            $comparisonResults.append('<tr><td colspan="5">Não há dados suficientes para comparação</td></tr>');
-                        }
-                    }
-                });
-            </script>
+            </div>      
         </div>
         <?php
     }
+        /**
+         * Display the saved stacking groups
+         */
+        public static function groups_page() {
+            global $wpdb;
+            $table = $wpdb->prefix . 'sps_groups';
+            
+            // Handle delete action
+            if (isset($_GET['delete']) && isset($_GET['_wpnonce']) && wp_verify_nonce($_GET['_wpnonce'], 'sps_delete_group')) {
+                $id = intval($_GET['delete']);
+                $wpdb->delete($table, ['id' => $id], ['%d']);
+                echo '<div class="notice notice-success is-dismissible"><p>Grupo excluído com sucesso!</p></div>';
+            }
+            
+            // Get all saved groups
+            $groups = $wpdb->get_results("SELECT * FROM $table ORDER BY name ASC", ARRAY_A);
+            
+            ?>
+            <div class="wrap">
+                <h1>Grupos de Empilhamento Salvos</h1>
+                
+                <?php if (empty($groups)): ?>
+                    <div class="notice notice-info">
+                        <p>Nenhum grupo de empilhamento salvo ainda. <a href="<?php echo admin_url('admin.php?page=sps-create'); ?>">Criar um novo grupo</a>.</p>
+                    </div>
+                <?php else: ?>
+                    <table class="wp-list-table widefat fixed striped">
+                        <thead>
+                            <tr>
+                                <th>Nome</th>
+                                <th>Produtos</th>
+                                <th>Dimensões (AxLxC)</th>
+                                <th>Peso</th>
+                                <th>Ações</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <?php foreach ($groups as $group): ?>
+                                <?php 
+                                $product_ids = maybe_unserialize($group['product_ids']);
+                                $product_count = is_array($product_ids) ? count($product_ids) : 0;
+                                ?>
+                                <tr>
+                                    <td><?php echo esc_html($group['name']); ?></td>
+                                    <td><?php echo esc_html($product_count); ?> produtos</td>
+                                    <td><?php echo esc_html($group['height']); ?> x <?php echo esc_html($group['width']); ?> x <?php echo esc_html($group['length']); ?> cm</td>
+                                    <td><?php echo esc_html($group['weight']); ?> kg</td>
+                                    <td>
+                                        <a href="<?php echo admin_url('admin.php?page=sps-create&edit=' . $group['id']); ?>" class="button button-small">Editar</a>
+                                        <a href="<?php echo wp_nonce_url(admin_url('admin.php?page=sps-groups&delete=' . $group['id']), 'sps_delete_group'); ?>" class="button button-small button-link-delete" onclick="return confirm('Tem certeza que deseja excluir este grupo?');">Excluir</a>
+                                        <a href="#" class="button button-small sps-simulate-group" data-group-id="<?php echo esc_attr($group['id']); ?>">Simular Frete</a>
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                        </tbody>
+                    </table>
+                    
+                    <p><a href="<?php echo admin_url('admin.php?page=sps-create'); ?>" class="button button-primary">Criar Novo Grupo</a></p>
+                    
+                    <!-- Modal de Simulação de Frete para Grupos -->
+                    <div id="sps-group-simulation-modal" class="sps-modal" style="display:none;">
+                        <div class="sps-modal-content">
+                            <span class="sps-modal-close">&times;</span>
+                            <h2>Simulação de Frete para Grupo</h2>
+                            
+                            <div class="sps-simulation-form">
+                                <div class="sps-form-row">
+                                    <label for="sps-group-simulation-origin">CEP de Origem:</label>
+                                    <input type="text" id="sps-group-simulation-origin" class="regular-text" placeholder="00000-000" value="<?php echo esc_attr(get_option('sps_test_origin_cep', '01001000')); ?>">
+                                </div>
+                                <div class="sps-form-row">
+                                    <label for="sps-group-simulation-destination">CEP de Destino:</label>
+                                    <input type="text" id="sps-group-simulation-destination" class="regular-text" placeholder="00000-000" value="<?php echo esc_attr(get_option('sps_test_destination_cep', '04538132')); ?>">
+                                </div>
+                                <div class="sps-form-row">
+                                    <button id="sps-run-group-simulation" class="button button-primary">Simular Frete</button>
+                                </div>
+                            </div>
+                            <div class="sps-simulation-loading" style="display:none;">
+                                <p>Consultando transportadoras...</p>
+                            </div>
+                            
+                            <div class="sps-simulation-error" style="display:none;">
+                                <p>Erro ao simular frete: <span class="sps-error-message"></span></p>
+                            </div>
+                            
+                            <div class="sps-simulation-success" style="display:none;">
+                                <h3>Resultados da Simulação</h3>
+                                
+                                <table class="wp-list-table widefat fixed striped">
+                                    <thead>
+                                        <tr>
+                                            <th>Transportadora</th>
+                                            <th>Preço (R$)</th>
+                                            <th>Prazo (dias)</th>
+                                            <th>Tipo de Serviço</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody id="sps-group-simulation-results">
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                <?php endif; ?>
+            </div>
+            <?php
+        }
         /**
          * Settings page for the plugin
          */
@@ -918,42 +801,6 @@ class SPS_Admin {
                             </td>
                         </tr>
                     </table>
-                    
-                    <div class="sps-api-status">
-                        <h3>Status da API</h3>
-                        <?php
-                        // Check if we can connect to the API
-                        if (!empty($api_token)) {
-                            $test_data = [
-                                'from' => ['postal_code' => '09531190'],
-                                'to' => ['postal_code' => '30240440'],
-                                'cargo_types' => array_map('intval', explode(',', $cargo_types)),
-                                'invoice_amount' => 100,
-                                'volumes' => [
-                                    [
-                                        'quantity' => 1,
-                                        'width' => 10,
-                                        'height' => 10,
-                                        'length' => 10,
-                                        'weight' => 1
-                                    ]
-                                ],
-                                'recipient' => ['document' => null, 'name' => null]
-                            ];
-                            
-                            $response = self::make_api_request($api_token, $test_data);
-                            
-                            if (is_wp_error($response)) {
-                                echo '<div class="notice notice-error inline"><p>Erro ao conectar com a API: ' . esc_html($response->get_error_message()) . '</p></div>';
-                            } else {
-                                echo '<div class="notice notice-success inline"><p>Conexão com a API estabelecida com sucesso!</p></div>';
-                            }
-                        } else {
-                            echo '<div class="notice notice-warning inline"><p>Token da API não configurado.</p></div>';
-                        }
-                        ?>
-                    </div>
-                    
                     <?php submit_button('Salvar Configurações', 'primary', 'sps_save_settings'); ?>
                 </form>
             </div>
