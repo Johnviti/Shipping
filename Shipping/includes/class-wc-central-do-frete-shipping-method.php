@@ -100,41 +100,79 @@ class WC_Central_Do_Frete_Shipping_Method extends WC_Shipping_Method {
         $destination_postcode = wc_format_postcode($package['destination']['postcode'], $package['destination']['country']);
         $destination_postcode = preg_replace('/[^0-9]/', '', $destination_postcode);
 
-        // Get cart contents
-        $cart_items = WC()->cart->get_cart();
+        // Check if this is a package from Stackable Product Shipping
+        $is_sps_package = isset($package['sps_pacote']);
+        
+        // Log debug information if enabled
+        if ('yes' === $this->debug) {
+            $this->log_debug('Processing package: ' . ($is_sps_package ? $package['sps_pacote'] : 'Standard WooCommerce package'));
+            $this->log_debug('Package details: ' . json_encode([
+                'weight' => isset($package['package_weight']) ? $package['package_weight'] : 'N/A',
+                'height' => isset($package['package_height']) ? $package['package_height'] : 'N/A',
+                'width' => isset($package['package_width']) ? $package['package_width'] : 'N/A',
+                'length' => isset($package['package_length']) ? $package['package_length'] : 'N/A',
+                'is_sps' => $is_sps_package
+            ]));
+        }
         
         // Prepare volumes array
         $volumes = array();
         $total_price = 0;
         
-        foreach ($cart_items as $cart_item) {
-            $product = $cart_item['data'];
-            
-            // Skip if product doesn't have dimensions or weight
-            if (!$product->has_dimensions() || !$product->has_weight()) {
-                continue;
-            }
-            
-            $width = wc_get_dimension($product->get_width(), 'cm');
-            $height = wc_get_dimension($product->get_height(), 'cm');
-            $length = wc_get_dimension($product->get_length(), 'cm');
-            $weight = wc_get_weight($product->get_weight(), 'kg');
-            
-            // Add to volumes array
+        if ($is_sps_package) {
+            // Use the package dimensions directly from SPS
             $volumes[] = array(
-                'quantity' => $cart_item['quantity'],
-                'width' => $width,
-                'height' => $height,
-                'length' => $length,
-                'weight' => $weight
+                'quantity' => 1, // Treat as a single package
+                'width' => isset($package['package_width']) ? floatval($package['package_width']) : 10,
+                'height' => isset($package['package_height']) ? floatval($package['package_height']) : 10,
+                'length' => isset($package['package_length']) ? floatval($package['package_length']) : 10,
+                'weight' => isset($package['package_weight']) ? floatval($package['package_weight']) : 1
             );
             
-            // Add to total price
-            $total_price += $product->get_price() * $cart_item['quantity'];
+            // Calculate total price from package contents
+            foreach ($package['contents'] as $item) {
+                $total_price += $item['data']->get_price() * $item['quantity'];
+            }
+            
+            if ('yes' === $this->debug) {
+                $this->log_debug('Using SPS package dimensions: ' . json_encode($volumes[0]));
+                $this->log_debug('Package total price: ' . $total_price);
+            }
+        } else {
+            // Standard WooCommerce package processing
+            foreach ($package['contents'] as $item) {
+                $product = $item['data'];
+                
+                // Skip if product doesn't have dimensions or weight
+                if (!$product->has_dimensions() || !$product->has_weight()) {
+                    continue;
+                }
+                
+                $width = wc_get_dimension($product->get_width(), 'cm');
+                $height = wc_get_dimension($product->get_height(), 'cm');
+                $length = wc_get_dimension($product->get_length(), 'cm');
+                $weight = wc_get_weight($product->get_weight(), 'kg');
+                $weight = $weight/1000;
+                
+                // Add to volumes array
+                $volumes[] = array(
+                    'quantity' => $item['quantity'],
+                    'width' => $width,
+                    'height' => $height,
+                    'length' => $length,
+                    'weight' => $weight
+                );
+                
+                // Add to total price
+                $total_price += $product->get_price() * $item['quantity'];
+            }
         }
         
         // If no valid products with dimensions and weight, return
         if (empty($volumes)) {
+            if ('yes' === $this->debug) {
+                $this->log_debug('No valid volumes found for shipping calculation');
+            }
             return;
         }
         
@@ -159,11 +197,14 @@ class WC_Central_Do_Frete_Shipping_Method extends WC_Shipping_Method {
         
         // Process response
         if ($response && !is_wp_error($response)) {
+            if ('yes' === $this->debug) {
+                $this->log_debug('API response received: ' . json_encode($response));
+            }
             $this->process_shipping_rates($response);
         } else {
             // Log error if debug is enabled
             if ('yes' === $this->debug) {
-                $this->log_debug('API request failed: ' . ($response->get_error_message() ?? 'Unknown error'));
+                $this->log_debug('API request failed: ' . (is_wp_error($response) ? $response->get_error_message() : 'Unknown error'));
             }
         }
     }
