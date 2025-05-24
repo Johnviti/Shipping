@@ -98,14 +98,17 @@ class SPS_Admin {
             return;
         }
         
-        // Prepare API request data
+        // Prepare API request data - Updated to match the required format
         $request_data = [
-            'from' => ['postal_code' => $origin],
-            'to' => ['postal_code' => $destination],
+            'from' => $origin,
+            'to' => $destination,
             'cargo_types' => $cargo_types,
             'invoice_amount' => $value,
             'volumes' => $volumes,
-            'recipient' => ['document' => null, 'name' => null]
+            'recipient' => [
+                'document' => null,
+                'name' => null
+            ]
         ];
         
         error_log('SPS: Prepared API request data: ' . json_encode($request_data));
