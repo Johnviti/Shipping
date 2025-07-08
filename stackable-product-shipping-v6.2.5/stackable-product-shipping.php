@@ -9,7 +9,7 @@ Author: WPlugin
 if (!defined('ABSPATH')) exit;
 
 // Define plugin version
-define('SPS_VERSION', 'v6.2.3');
+define('SPS_VERSION', 'v6.2.5');
 define('SPS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SPS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -43,6 +43,7 @@ function sps_register_ajax_handlers() {
     add_action('wp_ajax_sps_get_product_weight', array('SPS_Admin_AJAX', 'ajax_get_product_weight'));
     add_action('wp_ajax_sps_calculate_weight', ['SPS_AJAX', 'calculate_weight']);
     add_action('wp_ajax_sps_test_api', ['SPS_Admin_AJAX', 'ajax_test_api']);
+    add_action('wp_ajax_sps_test_frenet_api', ['SPS_Admin_AJAX', 'ajax_test_frenet_api']);
 }
  
 // Enqueue frontend scripts

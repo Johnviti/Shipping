@@ -229,6 +229,7 @@ jQuery(document).ready(function($) {
             data: {
                 action: 'sps_simulate_shipping',
                 origin: origin,
+
                 destination: destination,
                 cargo_types: ['28'],
                 value: value,
@@ -300,95 +301,219 @@ jQuery(document).ready(function($) {
         });
     });
     
-    // Função para exibir os resultados nas tabelas
+    // Função para exibir resultados de múltiplas APIs
     function displayResults(separateData, combinedData) {
-        const $separateResults = $('#sps-separate-results');
-        const $combinedResults = $('#sps-combined-results');
-        const $comparisonResults = $('#sps-comparison-results');
+        // Limpar tabelas existentes
+        $('#sps-separate-results').empty();
+        $('#sps-combined-results').empty();
+        $('#sps-comparison-results').empty();
+
+        console.log('separateData', separateData);
+        console.log('combinedData', combinedData);
         
-        $separateResults.empty();
-        $combinedResults.empty();
-        $comparisonResults.empty();
-        
-        // Preencher tabela de produtos separados
-        if (separateData.prices && separateData.prices.length > 0) {
-            separateData.prices.forEach(function(price) {
-                $separateResults.append(`
-                    <tr>
-                        <td>${price.shipping_carrier}</td>
-                        <td>R$ ${price.price.toFixed(2)}</td>
-                        <td>${price.delivery_time}</td>
-                        <td>${price.service_type || 'Padrão'}</td>
-                    </tr>
-                `);
-            });
-        } else {
-            $separateResults.append('<tr><td colspan="4">Nenhum resultado encontrado</td></tr>');
+        // Função para normalizar dados de preço
+        function normalizePrice(price, source) {
+            return {
+                source: source,
+                shipping_carrier: price.shipping_carrier || price.carrier || 'N/A',
+                modal: price.modal || price.service || 'N/A',
+                price: price.price || 0,
+                delivery_time: price.delivery_time || 'N/A'
+            };
         }
         
-        // Preencher tabela de pacote combinado
-        if (combinedData.prices && combinedData.prices.length > 0) {
-            combinedData.prices.forEach(function(price) {
-                $combinedResults.append(`
-                    <tr>
-                        <td>${price.shipping_carrier}</td>
-                        <td>R$ ${price.price.toFixed(2)}</td>
-                        <td>${price.delivery_time}</td>
-                        <td>${price.service_type || 'Padrão'}</td>
-                    </tr>
-                `);
-            });
-        } else {
-            $combinedResults.append('<tr><td colspan="4">Nenhum resultado encontrado</td></tr>');
-        }
-        
-        // Preencher tabela de comparação
-        const carriers = new Set();
-        const priceMap = {};
-        
-        if (separateData.prices) {
-            separateData.prices.forEach(function(price) {
-                carriers.add(price.shipping_carrier);
-                if (!priceMap[price.shipping_carrier]) {
-                    priceMap[price.shipping_carrier] = {};
-                }
-                priceMap[price.shipping_carrier].separate = price.price;
-            });
-        }
-        
-        if (combinedData.prices) {
-            combinedData.prices.forEach(function(price) {
-                carriers.add(price.shipping_carrier);
-                if (!priceMap[price.shipping_carrier]) {
-                    priceMap[price.shipping_carrier] = {};
-                }
-                priceMap[price.shipping_carrier].combined = price.price;
-            });
-        }
-        
-        carriers.forEach(function(carrier) {
-            const separatePrice = priceMap[carrier].separate || 0;
-            const combinedPrice = priceMap[carrier].combined || 0;
+        // Processar resultados separados
+        if (separateData) {
+            // Combinar resultados de todas as APIs
+            let allSeparateResults = [];
             
-            if (separatePrice && combinedPrice) {
-                const economy = separatePrice - combinedPrice;
-                const economyPercent = (economy / separatePrice) * 100;
-                const economyClass = economy > 0 ? 'sps-economy-positive' : 'sps-economy-negative';
-                
-                $comparisonResults.append(`
-                    <tr>
-                        <td>${carrier}</td>
-                        <td>R$ ${separatePrice.toFixed(2)}</td>
-                        <td>R$ ${combinedPrice.toFixed(2)}</td>
-                        <td class="${economyClass}">R$ ${economy.toFixed(2)}</td>
-                        <td class="${economyClass}">${economyPercent.toFixed(2)}%</td>
-                    </tr>
-                `);
+            if (separateData.central && separateData.central.prices) {
+                separateData.central.prices.forEach(price => {
+                    allSeparateResults.push(normalizePrice(price, 'Central do Frete'));
+                });
             }
-        });
+            
+            if (separateData.frenet && separateData.frenet.prices) {
+                separateData.frenet.prices.forEach(price => {
+                    allSeparateResults.push(normalizePrice(price, 'Frenet'));
+                });
+            }
+            
+            // Ordenar por preço
+            allSeparateResults.sort((a, b) => a.price - b.price);
+            
+            // Exibir resultados separados
+            allSeparateResults.forEach(price => {
+                const row = `
+                    <tr>
+                        <td>${price.source}</td>
+                        <td>${price.shipping_carrier}</td>
+                        <td>${price.modal}</td>
+                        <td>R$ ${price.price.toFixed(2)}</td>
+                        <td>${price.delivery_time} dias</td>
+                    </tr>
+                `;
+                $('#sps-separate-results').append(row);
+            });
+            
+            if (allSeparateResults.length === 0) {
+                $('#sps-separate-results').append('<tr><td colspan="5">Nenhum resultado encontrado</td></tr>');
+            }
+        }
         
-        if ($comparisonResults.children().length === 0) {
-            $comparisonResults.append('<tr><td colspan="5">Não há dados suficientes para comparação</td></tr>');
+        // Processar resultados combinados
+        if (combinedData) {
+            let allCombinedResults = [];
+            
+            if (combinedData.central && combinedData.central.prices) {
+                combinedData.central.prices.forEach(price => {
+                    allCombinedResults.push(normalizePrice(price, 'Central do Frete'));
+                });
+            }
+            
+            if (combinedData.frenet && combinedData.frenet.prices) {
+                combinedData.frenet.prices.forEach(price => {
+                    allCombinedResults.push(normalizePrice(price, 'Frenet'));
+                });
+            }
+            
+            // Ordenar por preço
+            allCombinedResults.sort((a, b) => a.price - b.price);
+            
+            // Exibir resultados combinados
+            allCombinedResults.forEach(price => {
+                const row = `
+                    <tr>
+                        <td>${price.source}</td>
+                        <td>${price.shipping_carrier}</td>
+                        <td>${price.modal}</td>
+                        <td>R$ ${price.price.toFixed(2)}</td>
+                        <td>${price.delivery_time} dias</td>
+                    </tr>
+                `;
+                $('#sps-combined-results').append(row);
+            });
+            
+            if (allCombinedResults.length === 0) {
+                $('#sps-combined-results').append('<tr><td colspan="5">Nenhum resultado encontrado</td></tr>');
+            }
+        }
+        
+        // Processar comparação (se ambos os dados estiverem disponíveis)
+        if (separateData && combinedData) {
+            // Coletar todos os preços separados
+            let allSeparatePrices = [];
+            if (separateData.central && separateData.central.prices) {
+                separateData.central.prices.forEach(price => {
+                    allSeparatePrices.push({
+                        ...price,
+                        source: 'Central do Frete'
+                    });
+                });
+            }
+            if (separateData.frenet && separateData.frenet.prices) {
+                separateData.frenet.prices.forEach(price => {
+                    allSeparatePrices.push({
+                        ...price,
+                        source: 'Frenet'
+                    });
+                });
+            }
+            
+            // Coletar todos os preços combinados
+            let allCombinedPrices = [];
+            if (combinedData.central && combinedData.central.prices) {
+                combinedData.central.prices.forEach(price => {
+                    allCombinedPrices.push({
+                        ...price,
+                        source: 'Central do Frete'
+                    });
+                });
+            }
+            if (combinedData.frenet && combinedData.frenet.prices) {
+                combinedData.frenet.prices.forEach(price => {
+                    allCombinedPrices.push({
+                        ...price,
+                        source: 'Frenet'
+                    });
+                });
+            }
+            
+            // Ordenar ambos por preço
+            allSeparatePrices.sort((a, b) => a.price - b.price);
+            allCombinedPrices.sort((a, b) => a.price - b.price);
+            
+            // Criar comparações para cada combinação
+            const maxLength = Math.max(allSeparatePrices.length, allCombinedPrices.length);
+            
+            for (let i = 0; i < maxLength; i++) {
+                const separatePrice = allSeparatePrices[i];
+                const combinedPrice = allCombinedPrices[i];
+                
+                if (separatePrice && combinedPrice) {
+                    const difference = separatePrice.price - combinedPrice.price;
+                    const percentageEconomy = ((difference / separatePrice.price) * 100).toFixed(2);
+                    
+                    const comparisonRow = `
+                        <tr>
+                            <td>${separatePrice.source} - ${separatePrice.shipping_carrier || separatePrice.carrier || 'N/A'}</td>
+                            <td>R$ ${separatePrice.price.toFixed(2)}</td>
+                            <td>R$ ${combinedPrice.price.toFixed(2)}</td>
+                            <td>R$ ${Math.abs(difference).toFixed(2)}</td>
+                            <td class="${difference > 0 ? 'positive-economy' : ''}">
+                                ${Math.abs(percentageEconomy)}% ${difference > 0 ? '(Economia)' : '(Mais caro)'}
+                            </td>
+                        </tr>
+                    `;
+                    $('#sps-comparison-results').append(comparisonRow);
+                } else if (separatePrice && !combinedPrice) {
+                    // Só tem preço separado
+                    const comparisonRow = `
+                        <tr>
+                            <td>${separatePrice.source} - ${separatePrice.shipping_carrier || separatePrice.carrier || 'N/A'}</td>
+                            <td>R$ ${separatePrice.price.toFixed(2)}</td>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>Sem opção combinada</td>
+                        </tr>
+                    `;
+                    $('#sps-comparison-results').append(comparisonRow);
+                } else if (!separatePrice && combinedPrice) {
+                    // Só tem preço combinado
+                    const comparisonRow = `
+                        <tr>
+                            <td>-</td>
+                            <td>-</td>
+                            <td>R$ ${combinedPrice.price.toFixed(2)}</td>
+                            <td>-</td>
+                            <td>Sem opção separada</td>
+                        </tr>
+                    `;
+                    $('#sps-comparison-results').append(comparisonRow);
+                }
+            }
+            
+            // Adicionar linha de resumo com os melhores preços
+            if (allSeparatePrices.length > 0 && allCombinedPrices.length > 0) {
+                const bestSeparate = allSeparatePrices[0]; // Já ordenado por preço
+                const bestCombined = allCombinedPrices[0]; // Já ordenado por preço
+                
+                const difference = bestSeparate.price - bestCombined.price;
+                const percentageEconomy = ((difference / bestSeparate.price) * 100).toFixed(2);
+                
+                const summaryRow = `
+                    <tr style="background-color: #f0f0f0; font-weight: bold; border-top: 2px solid #ddd;">
+                        <td><strong>MELHOR OPÇÃO GERAL</strong></td>
+                        <td><strong>R$ ${bestSeparate.price.toFixed(2)}</strong></td>
+                        <td><strong>R$ ${bestCombined.price.toFixed(2)}</strong></td>
+                        <td><strong>R$ ${Math.abs(difference).toFixed(2)}</strong></td>
+                        <td class="${difference > 0 ? 'positive-economy' : ''}" style="font-weight: bold;">
+                            <strong>${Math.abs(percentageEconomy)}% ${difference > 0 ? '(ECONOMIA)' : '(MAIS CARO)'}</strong>
+                        </td>
+                    </tr>
+                `;
+                $('#sps-comparison-results').append(summaryRow);
+            }
         }
     }
 });

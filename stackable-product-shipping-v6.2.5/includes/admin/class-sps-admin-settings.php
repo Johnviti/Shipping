@@ -16,6 +16,7 @@ class SPS_Admin_Settings {
         
         // Get current settings
         $api_token = get_option('sps_api_token', '');
+        $frenet_token = get_option('sps_frenet_token', '');
         $cargo_types = get_option('sps_cargo_types', '28');
         $test_origin_cep = get_option('sps_test_origin_cep', '01001000');
         $test_destination_cep = get_option('sps_test_destination_cep', '04538132');
@@ -31,10 +32,17 @@ class SPS_Admin_Settings {
                 
                 <table class="form-table">
                     <tr>
-                        <th scope="row"><label for="sps_api_token">Token da API</label></th>
+                        <th scope="row"><label for="sps_api_token">Token da API Central do Frete</label></th>
                         <td>
                             <input type="text" name="sps_api_token" id="sps_api_token" value="<?php echo esc_attr($api_token); ?>" class="regular-text">
-                            <p class="description">Token de acesso à API de frete.</p>
+                            <p class="description">Token de acesso à API Central do Frete.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="sps_frenet_token">Token da API Frenet</label></th>
+                        <td>
+                            <input type="text" name="sps_frenet_token" id="sps_frenet_token" value="<?php echo esc_attr($frenet_token); ?>" class="regular-text">
+                            <p class="description">Token de acesso à API Frenet. Se preenchido, será usado em conjunto com a API Central do Frete para obter mais cotações.</p>
                         </td>
                     </tr>
                     <tr>
@@ -84,22 +92,23 @@ class SPS_Admin_Settings {
             </form>
             
             <div class="sps-api-test">
-                <h2>Testar Conexão com a API</h2>
-                <p>Clique no botão abaixo para testar a conexão com a API de frete.</p>
-                <button type="button" id="sps-test-api" class="button">Testar API</button>
+                <h2>Testar Conexão com as APIs</h2>
+                <p>Clique nos botões abaixo para testar a conexão com as APIs de frete.</p>
+                <button type="button" id="sps-test-api" class="button">Testar API Central do Frete</button>
+                <button type="button" id="sps-test-frenet-api" class="button" style="margin-left: 10px;">Testar API Frenet</button>
                 <div id="sps-api-test-result" style="margin-top: 10px;"></div>
             </div>
         </div>
         
         <script>
         jQuery(document).ready(function($) {
-            // API test button handler
+            // API test button handler for Central do Frete
             $('#sps-test-api').on('click', function() {
                 var $button = $(this);
                 var $result = $('#sps-api-test-result');
                 
                 $button.prop('disabled', true).text('Testando...');
-                $result.html('<div class="notice notice-info"><p>Testando conexão com a API...</p></div>');
+                $result.html('<div class="notice notice-info"><p>Testando conexão com a API Central do Frete...</p></div>');
                 
                 $.ajax({
                     url: ajaxurl,
@@ -110,7 +119,6 @@ class SPS_Admin_Settings {
                     },
                     success: function(response) {
                         if (response.success) {
-                            // Verifica se a mensagem está em response.data.message
                             var message = '';
                             if (response.data && typeof response.data === 'object' && response.data.message) {
                                 message = response.data.message;
@@ -134,7 +142,52 @@ class SPS_Admin_Settings {
                         $result.html('<div class="notice notice-error"><p>Erro ao conectar com o servidor.</p></div>');
                     },
                     complete: function() {
-                        $button.prop('disabled', false).text('Testar API');
+                        $button.prop('disabled', false).text('Testar API Central do Frete');
+                    }
+                });
+            });
+            
+            // API test button handler for Frenet
+            $('#sps-test-frenet-api').on('click', function() {
+                var $button = $(this);
+                var $result = $('#sps-api-test-result');
+                
+                $button.prop('disabled', true).text('Testando...');
+                $result.html('<div class="notice notice-info"><p>Testando conexão com a API Frenet...</p></div>');
+                
+                $.ajax({
+                    url: ajaxurl,
+                    type: 'POST',
+                    data: {
+                        action: 'sps_test_frenet_api',
+                        nonce: '<?php echo wp_create_nonce('sps_test_frenet_api_nonce'); ?>'
+                    },
+                    success: function(response) {
+                        if (response.success) {
+                            var message = '';
+                            if (response.data && typeof response.data === 'object' && response.data.message) {
+                                message = response.data.message;
+                            } else if (typeof response.data === 'string') {
+                                message = response.data;
+                            } else {
+                                message = 'Conexão com a API Frenet realizada com sucesso!';
+                            }
+                            $result.html('<div class="notice notice-success"><p>' + message + '</p></div>');
+                        } else {
+                            var errorMsg = 'Erro na conexão com a API Frenet';
+                            if (response.data && typeof response.data === 'object' && response.data.message) {
+                                errorMsg = response.data.message;
+                            } else if (typeof response.data === 'string') {
+                                errorMsg = response.data;
+                            }
+                            $result.html('<div class="notice notice-error"><p>Erro: ' + errorMsg + '</p></div>');
+                        }
+                    },
+                    error: function() {
+                        $result.html('<div class="notice notice-error"><p>Erro ao conectar com o servidor.</p></div>');
+                    },
+                    complete: function() {
+                        $button.prop('disabled', false).text('Testar API Frenet');
                     }
                 });
             });
@@ -149,6 +202,7 @@ class SPS_Admin_Settings {
     private static function save_settings() {
         // Sanitize and save settings
         $api_token = sanitize_text_field($_POST['sps_api_token']);
+        $frenet_token = sanitize_text_field($_POST['sps_frenet_token']);
         $cargo_types = sanitize_text_field($_POST['sps_cargo_types']);
         $test_origin_cep = sanitize_text_field($_POST['sps_test_origin_cep']);
         $test_destination_cep = sanitize_text_field($_POST['sps_test_destination_cep']);
@@ -156,6 +210,7 @@ class SPS_Admin_Settings {
         $enable_in_checkout = sanitize_text_field($_POST['sps_enable_in_checkout']);
         
         update_option('sps_api_token', $api_token);
+        update_option('sps_frenet_token', $frenet_token);
         update_option('sps_cargo_types', $cargo_types);
         update_option('sps_test_origin_cep', $test_origin_cep);
         update_option('sps_test_destination_cep', $test_destination_cep);

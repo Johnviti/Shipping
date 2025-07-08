@@ -134,11 +134,12 @@ class SPS_Admin_Simulator {
                         <table class="wp-list-table widefat fixed striped">
                             <thead>
                                 <tr>
-                                    <th>Transportadora</th>
-                                    <th>Preço (R$)</th>
-                                    <th>Prazo (dias)</th>
-                                    <th>Tipo de Serviço</th>
-                                </tr>
+                                        <th>Fonte</th>
+                                        <th>Transportadora</th>
+                                        <th>Tipo de Serviço</th>
+                                        <th>Preço (R$)</th>
+                                        <th>Prazo (dias)</th>
+                                    </tr>
                             </thead>
                             <tbody id="sps-separate-results">
                                 <!-- Resultados serão inseridos aqui via JavaScript -->
@@ -150,12 +151,13 @@ class SPS_Admin_Simulator {
                         <h4>Cotação para Pacote Único</h4>
                         <table class="wp-list-table widefat fixed striped">
                             <thead>
-                                <tr>
-                                    <th>Transportadora</th>
-                                    <th>Preço (R$)</th>
-                                    <th>Prazo (dias)</th>
-                                    <th>Tipo de Serviço</th>
-                                </tr>
+                               <tr>
+                                        <th>Fonte</th>
+                                        <th>Transportadora</th>
+                                        <th>Tipo de Serviço</th>
+                                        <th>Preço (R$)</th>
+                                        <th>Prazo (dias)</th>
+                                    </tr>
                             </thead>
                             <tbody id="sps-combined-results">
                             </tbody>

@@ -523,10 +523,11 @@ class SPS_Admin_Create {
                             <table class="wp-list-table widefat fixed striped">
                                 <thead>
                                     <tr>
+                                        <th>Fonte</th>
                                         <th>Transportadora</th>
+                                        <th>Tipo de Serviço</th>
                                         <th>Preço (R$)</th>
                                         <th>Prazo (dias)</th>
-                                        <th>Tipo de Serviço</th>
                                     </tr>
                                 </thead>
                                 <tbody id="sps-separate-results">
@@ -540,10 +541,11 @@ class SPS_Admin_Create {
                             <table class="wp-list-table widefat fixed striped">
                                 <thead>
                                     <tr>
+                                        <th>Fonte</th>
                                         <th>Transportadora</th>
+                                        <th>Tipo de Serviço</th>
                                         <th>Preço (R$)</th>
                                         <th>Prazo (dias)</th>
-                                        <th>Tipo de Serviço</th>
                                     </tr>
                                 </thead>
                                 <tbody id="sps-combined-results">
@@ -556,10 +558,10 @@ class SPS_Admin_Create {
                             <table class="wp-list-table widefat fixed striped">
                                 <thead>
                                     <tr>
-                                        <th>Transportadora</th>
-                                        <th>Produtos Separados (R$)</th>
-                                        <th>Pacote Único (R$)</th>
-                                        <th>Economia (R$)</th>
+                                        <th>Tipo</th>
+                                        <th>Melhor Preço Separado (R$)</th>
+                                        <th>Melhor Preço Combinado (R$)</th>
+                                        <th>Diferença (R$)</th>
                                         <th>Economia (%)</th>
                                     </tr>
                                 </thead>

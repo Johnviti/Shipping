@@ -3,180 +3,64 @@
  * Admin AJAX handlers
  */
 class SPS_Admin_AJAX {
-     /**
-     * AJAX handler for shipping simulation
+      /**
+     * AJAX handler for freight simulation
      */
     public static function ajax_simulate_shipping() {
-        // Add logging
-        error_log('SPS: Starting shipping simulation');
+       check_ajax_referer('sps_simulate_shipping_nonce', 'nonce');
         
-        check_ajax_referer('sps_simulate_shipping_nonce', 'nonce');
-        error_log('SPS: Nonce check passed');
-        // Get token and cargo types from WooCommerce shipping method
-        $token = get_option('sps_api_token');
-
-        $cargo_types = ['28']; // Default cargo type
+        // Get API tokens
+        $central_token = get_option('sps_api_token');
+        $frenet_token = get_option('sps_frenet_token');
+        $cargo_types = get_option('sps_cargo_types', '28');
         
-        // Try to get settings from WooCommerce shipping methods
-        $shipping_methods = WC()->shipping()->get_shipping_methods();
-        if (isset($shipping_methods['central_do_frete'])) {
-            $central_do_frete = $shipping_methods['central_do_frete'];
-            $cargo_types_str = $central_do_frete->get_option('cargo_types');
-            if (!empty($cargo_types_str)) {
-                $cargo_types = array_map('intval', explode(',', $cargo_types_str));
-            }
-            error_log('SPS: Got token from shipping method: ' . substr($token, 0, 4) . '...' . substr($token, -4));
+        if (empty($central_token) && empty($frenet_token)) {
+            wp_send_json_error('Nenhum token de API configurado. Configure pelo menos um token (Central do Frete ou Frenet).');
+            return;
         }
         
+        // Get and sanitize input data
         $origin = preg_replace('/\D/', '', sanitize_text_field($_POST['origin']));
         $destination = preg_replace('/\D/', '', sanitize_text_field($_POST['destination']));
+        $merchandise_value = floatval($_POST['value']);
         
-        error_log('SPS: Origin: ' . $origin . ', Destination: ' . $destination);
-        
-        // Override cargo types if provided in the request
-        if (isset($_POST['cargo_types']) && is_array($_POST['cargo_types'])) {
-            $cargo_types = array_map('intval', $_POST['cargo_types']);
-            error_log('SPS: Using cargo types from request: ' . implode(',', $cargo_types));
-        } else {
-            // Try to get from saved option
-            $cargo_types_option = get_option('sps_cargo_types', '28');
-            if (!empty($cargo_types_option)) {
-                $cargo_types = array_map('intval', explode(',', $cargo_types_option));
-                error_log('SPS: Using cargo types from option: ' . implode(',', $cargo_types));
-            }
-        }
-        
-        $value = isset($_POST['value']) ? floatval($_POST['value']) : 100;
-        $is_separate = isset($_POST['separate']) ? (bool) $_POST['separate'] : false;
-        
-        error_log('SPS: Value: ' . $value . ', Is separate: ' . ($is_separate ? 'true' : 'false'));
-        
-        // Get volumes from the request
-        $volumes = [];
-        if (isset($_POST['volumes'])) {
-            error_log('SPS: Volumes parameter found, type: ' . gettype($_POST['volumes']));
-            
-            // Handle both JSON string and array formats
-            if (is_string($_POST['volumes'])) {
-                error_log('SPS: Volumes is a string, attempting to decode JSON');
-                $volumes_data = json_decode(stripslashes($_POST['volumes']), true);
-                if (is_array($volumes_data)) {
-                    $volumes = $volumes_data;
-                    error_log('SPS: Successfully decoded volumes JSON: ' . print_r($volumes, true));
-                } else {
-                    error_log('SPS: Failed to decode volumes JSON. Error: ' . json_last_error_msg());
-                    error_log('SPS: Raw volumes data: ' . $_POST['volumes']);
-                }
-            } elseif (is_array($_POST['volumes'])) {
-                $volumes = $_POST['volumes'];
-                error_log('SPS: Volumes is already an array: ' . print_r($volumes, true));
-            }
-        } else {
-            error_log('SPS: No volumes parameter found in request');
-        }
-        
-        if (empty($token)) {
-            error_log('SPS: Token is empty, returning error');
-            wp_send_json_error(['message' => 'Token da API não configurado. Por favor, configure nas opções do plugin.']);
-            return;
-        }
-        
-        if (empty($origin)) {
-            error_log('SPS: Origin is empty, returning error');
-            wp_send_json_error(['message' => 'CEP de origem inválido ou não informado.']);
-            return;
-        }
-        
-        if (empty($destination)) {
-            error_log('SPS: Destination is empty, returning error');
-            wp_send_json_error(['message' => 'CEP de destino inválido ou não informado.']);
-            return;
-        }
-        
-        if (empty($volumes)) {
-            error_log('SPS: Volumes is empty, returning error');
-            wp_send_json_error(['message' => 'Nenhum volume informado para cotação.']);
-            return;
-        }
-        
-        // Prepare API request data - Updated to match the required format
-        $request_data = [
-            'from' => $origin,
-            'to' => $destination,
-            'cargo_types' => $cargo_types,
-            'invoice_amount' => $value,
-            'volumes' => $volumes,
-            'recipient' => [
-                'document' => null,
-                'name' => null
-            ]
-        ];
-        
-        error_log('SPS: Prepared API request data: ' . json_encode($request_data));
-        
-        // Make API request
-        $api_url = 'https://api.centraldofrete.com/v1/quotation';
-        
-        $args = [
-            'method' => 'POST',
-            'timeout' => 30,
-            'redirection' => 5,
-            'httpversion' => '1.1',
-            'headers' => [
-                'Content-Type' => 'application/json',
-                'Authorization' => $token
-            ],
-            'body' => json_encode($request_data),
-            'sslverify' => false
-        ];
-        
-        error_log('SPS: Making API request to: ' . $api_url);
-        $response = wp_remote_post($api_url, $args);
-        
-        if (is_wp_error($response)) {
-            error_log('SPS: API request failed: ' . $response->get_error_message());
-            wp_send_json_error(['message' => 'Erro na API: ' . $response->get_error_message()]);
-            return;
-        }
-        
-        $status_code = wp_remote_retrieve_response_code($response);
-        error_log('SPS: API response status code: ' . $status_code);
-        
-        $body = wp_remote_retrieve_body($response);
-        error_log('SPS: API response body: ' . $body);
-        
-        $data = json_decode($body, true);
+        // Get volume data
+        $volume_data = json_decode(stripslashes($_POST['volumes']), true);
         
         if (json_last_error() !== JSON_ERROR_NONE) {
-            error_log('SPS: Failed to decode API response: ' . json_last_error_msg());
-            wp_send_json_error(['message' => 'Erro ao decodificar resposta da API: ' . json_last_error_msg()]);
+            wp_send_json_error('Dados de volume inválidos.');
             return;
         }
         
-        if (isset($data['error'])) {
-            error_log('SPS: API returned error: ' . $data['error']);
-            wp_send_json_error(['message' => 'Erro retornado pela API: ' . $data['error']]);
+        // Validate required fields
+        if (empty($origin) || empty($destination) || $merchandise_value <= 0) {
+            wp_send_json_error('Todos os campos obrigatórios devem ser preenchidos.');
             return;
         }
         
-        // Verifica se é uma resposta com erro de peso máximo
-        if (isset($data['0']) && $data['0'] === false) {
-            error_log('SPS: API returned weight limit error: ' . $data['message']);
-            wp_send_json_error([
-                'success' => false,
-                'message' => $data['message']
-            ]);
+        $results = array();
+        
+        // Make requests to both APIs if tokens are available
+        if (!empty($central_token)) {
+            $central_result = self::make_central_frete_request($central_token, $origin, $destination, $merchandise_value, $volume_data, $cargo_types);
+            if ($central_result) {
+                $results['central'] = $central_result;
+            }
+        }
+        
+        if (!empty($frenet_token)) {
+            $frenet_result = self::make_frenet_request($frenet_token, $origin, $destination, $merchandise_value, $volume_data);
+            if ($frenet_result) {
+                $results['frenet'] = $frenet_result;
+            }
+        }
+        
+        if (empty($results)) {
+            wp_send_json_error('Nenhuma cotação foi encontrada nas APIs consultadas.');
             return;
         }
         
-        if (!isset($data['prices']) || !is_array($data['prices'])) {
-            error_log('SPS: Invalid API response format, prices not found or not an array');
-            wp_send_json_error(['message' => 'Formato de resposta inválido da API.']);
-            return;
-        }
-        
-        error_log('SPS: API request successful, returning ' . count($data['prices']) . ' prices');
-        wp_send_json_success($data);
+        wp_send_json_success($results);
     }
     
     /**
@@ -464,11 +348,8 @@ class SPS_Admin_AJAX {
      * AJAX handler for testing API connection
      */
     public static function ajax_test_api() {
-        // Add logging
-        error_log('SPS: Starting API connection test');
-        
-        error_log('SPS: Nonce check passed');
-        
+
+      
         // Get API token
         $token = isset($_POST['token']) ? sanitize_text_field($_POST['token']) : get_option('sps_api_token');
         
@@ -597,6 +478,275 @@ class SPS_Admin_AJAX {
             'message' => 'Conexão com a API realizada com sucesso! ' . $quote_count . ' cotações encontradas.',
             'data' => $data
         ]);
+    }
+
+    /**
+     * Make request to Central do Frete API
+     */
+    private static function make_central_frete_request($token, $origin, $destination, $merchandise_value, $volume_data, $cargo_types) {
+        // Convert cargo types to array
+        $cargo_types_array = array_map('intval', explode(',', $cargo_types));
+        
+        // Prepare volumes for Central do Frete API
+        $volumes = array();
+        foreach ($volume_data as $volume) {
+            $volumes[] = array(
+                'quantity' => intval($volume['quantity'] ?? 1),
+                'width' => floatval($volume['width'] ?? 10),
+                'height' => floatval($volume['height'] ?? 10),
+                'length' => floatval($volume['length'] ?? 10),
+                'weight' => floatval($volume['weight'] ?? 1)
+            );
+        }
+        
+        // Prepare API request data
+        $request_data = array(
+            'from' => $origin,
+            'to' => $destination,
+            'cargo_types' => $cargo_types_array,
+            'invoice_amount' => $merchandise_value,
+            'volumes' => $volumes,
+            'recipient' => array(
+                'document' => null,
+                'name' => null
+            )
+        );
+        
+        // Make API request
+        $api_url = 'https://api.centraldofrete.com/v1/quotation';
+        
+        $args = array(
+            'method' => 'POST',
+            'timeout' => 30,
+            'redirection' => 5,
+            'httpversion' => '1.1',
+            'headers' => array(
+                'Content-Type' => 'application/json',
+                'Authorization' => $token
+            ),
+            'body' => json_encode($request_data),
+            'sslverify' => false
+        );
+        
+        $response = wp_remote_post($api_url, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('SPS: Central do Frete API request failed: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('SPS: Failed to decode Central do Frete API response: ' . json_last_error_msg());
+            return false;
+        }
+        
+        // Check for API errors
+        if (isset($data['error']) || !isset($data['prices']) || !is_array($data['prices'])) {
+            error_log('SPS: Central do Frete API returned error or invalid format');
+            return false;
+        }
+        
+        return array(
+            'source' => 'Central do Frete',
+            'prices' => $data['prices']
+        );
+    }
+    
+    /**
+     * Make request to Frenet API
+     */
+    private static function make_frenet_request($token, $origin, $destination, $merchandise_value, $volume_data) {
+        // Prepare shipping items for Frenet API
+        $shipping_items = array();
+        foreach ($volume_data as $volume) {
+            $shipping_items[] = array(
+                'Height' => floatval($volume['height'] ?? 2),
+                'Length' => floatval($volume['length'] ?? 33),
+                'Quantity' => intval($volume['quantity'] ?? 1),
+                'Weight' => floatval($volume['weight'] ?? 1.18),
+                'Width' => floatval($volume['width'] ?? 47)
+            );
+        }
+        
+        // Prepare API request data for Frenet
+        $request_data = array(
+            'SellerCEP' => $origin,
+            'RecipientCEP' => $destination,
+            'ShipmentInvoiceValue' => $merchandise_value,
+            'ShippingServiceCode' => null,
+            'ShippingItemArray' => $shipping_items,
+            'RecipientCountry' => 'BR'
+        );
+        
+        // Make API request to Frenet
+        $api_url = 'https://api.frenet.com.br/shipping/quote';
+        
+        $args = array(
+            'method' => 'POST',
+            'timeout' => 30,
+            'redirection' => 5,
+            'httpversion' => '1.1',
+            'headers' => array(
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'token' => $token
+            ),
+            'body' => json_encode($request_data),
+            'sslverify' => false
+        );
+        
+        $response = wp_remote_post($api_url, $args);
+        
+        if (is_wp_error($response)) {
+            error_log('SPS: Frenet API request failed: ' . $response->get_error_message());
+            return false;
+        }
+        
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            error_log('SPS: Failed to decode Frenet API response: ' . json_last_error_msg());
+            return false;
+        }
+        
+        // Check for API errors or valid response
+        if (!isset($data['ShippingSevicesArray']) || !is_array($data['ShippingSevicesArray'])) {
+            error_log('SPS: Frenet API returned invalid format or no shipping services');
+            return false;
+        }
+        
+        // Convert Frenet response format to match Central do Frete format
+        $prices = array();
+        foreach ($data['ShippingSevicesArray'] as $service) {
+            if (isset($service['Error']) && $service['Error']) {
+                continue; // Skip services with errors
+            }
+            
+            $prices[] = array(
+                'carrier' => $service['Carrier'] ?? 'Frenet',
+                'service' => $service['ServiceDescription'] ?? $service['ServiceCode'] ?? 'Serviço',
+                'price' => floatval($service['ShippingPrice'] ?? 0),
+                'delivery_time' => intval($service['DeliveryTime'] ?? 0),
+                'service_code' => $service['ServiceCode'] ?? ''
+            );
+        }
+        
+        return array(
+            'source' => 'Frenet',
+            'prices' => $prices
+        );
+    }
+    
+    /**
+     * AJAX handler for testing Frenet API connection
+     */
+    public static function ajax_test_frenet_api() {
+        
+        // Get Frenet token
+        $token = get_option('sps_frenet_token');
+        
+        if (empty($token)) {
+            wp_send_json_error(array(
+                'success' => false,
+                'message' => 'Token da API Frenet não configurado. Por favor, informe um token válido.'
+            ));
+            return;
+        }
+        
+        // Prepare test data
+        $request_data = array(
+            'SellerCEP' => '04757020',
+            'RecipientCEP' => '14270000',
+            'ShipmentInvoiceValue' => 100.00,
+            'ShippingServiceCode' => null,
+            'ShippingItemArray' => array(
+                array(
+                    'Height' => 2,
+                    'Length' => 33,
+                    'Quantity' => 1,
+                    'Weight' => 1.18,
+                    'Width' => 47
+                )
+            ),
+            'RecipientCountry' => 'BR'
+        );
+        
+        // Make API request
+        $api_url = 'https://api.frenet.com.br/shipping/quote';
+        
+        $args = array(
+            'method' => 'POST',
+            'timeout' => 30,
+            'redirection' => 5,
+            'httpversion' => '1.1',
+            'headers' => array(
+                'Accept' => 'application/json',
+                'Content-Type' => 'application/json',
+                'token' => $token
+            ),
+            'body' => json_encode($request_data),
+            'sslverify' => false
+        );
+        
+        $response = wp_remote_post($api_url, $args);
+        
+        if (is_wp_error($response)) {
+            wp_send_json_error(array(
+                'success' => false,
+                'message' => 'Erro na conexão com a API Frenet: ' . $response->get_error_message()
+            ));
+            return;
+        }
+        
+        $status_code = wp_remote_retrieve_response_code($response);
+        $body = wp_remote_retrieve_body($response);
+        $data = json_decode($body, true);
+        
+        if (json_last_error() !== JSON_ERROR_NONE) {
+            wp_send_json_error(array(
+                'success' => false,
+                'message' => 'Erro ao decodificar resposta da API Frenet: ' . json_last_error_msg(),
+                'data' => $body
+            ));
+            return;
+        }
+        
+        // Check for API errors
+        if ($status_code !== 200) {
+            wp_send_json_error(array(
+                'success' => false,
+                'message' => 'API Frenet retornou código de status: ' . $status_code
+            ));
+            return;
+        }
+        
+        // Check if we have shipping services in the response
+        if (!isset($data['ShippingSevicesArray']) || !is_array($data['ShippingSevicesArray'])) {
+            wp_send_json_error(array(
+                'success' => false,
+                'message' => 'Formato de resposta inválido da API Frenet. Não foram encontrados serviços de entrega.',
+                'data' => $body
+            ));
+            return;
+        }
+        
+        // Count valid services (without errors)
+        $valid_services = 0;
+        foreach ($data['ShippingSevicesArray'] as $service) {
+            if (!isset($service['Error']) || !$service['Error']) {
+                $valid_services++;
+            }
+        }
+        
+        wp_send_json_success(array(
+            'success' => true,
+            'message' => 'Conexão com a API Frenet realizada com sucesso! ' . $valid_services . ' serviços de entrega encontrados.',
+            'data' => $data
+        ));
     }
 
 }
