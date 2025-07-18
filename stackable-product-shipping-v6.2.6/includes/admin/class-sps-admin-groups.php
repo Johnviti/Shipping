@@ -76,21 +76,33 @@ class SPS_Admin_Groups {
      * Render the group simulation modal
      */
     private static function render_group_simulation_modal() {
-        // Get token from options and anonymize it
-        $token = get_option('sps_api_token');
+        // Get tokens from options and anonymize them
+        $central_token = get_option('sps_api_token');
+        $frenet_token = get_option('sps_frenet_token');
         
         // Get test CEPs
         $test_origin_cep = get_option('sps_test_origin_cep', '01001000');
         $test_destination_cep = get_option('sps_test_destination_cep', '04538132');
         
-        $anonymized_token = '';
-        if (!empty($token)) {
+        $anonymized_central_token = '';
+        if (!empty($central_token)) {
             // Show only first 4 and last 4 characters
-            $token_length = strlen($token);
+            $token_length = strlen($central_token);
             if ($token_length > 8) {
-                $anonymized_token = substr($token, 0, 4) . str_repeat('*', $token_length - 8) . substr($token, -4);
+                $anonymized_central_token = substr($central_token, 0, 4) . str_repeat('*', $token_length - 8) . substr($central_token, -4);
             } else {
-                $anonymized_token = $token; // Token is too short to anonymize
+                $anonymized_central_token = $central_token; // Token is too short to anonymize
+            }
+        }
+        
+        $anonymized_frenet_token = '';
+        if (!empty($frenet_token)) {
+            // Show only first 4 and last 4 characters
+            $token_length = strlen($frenet_token);
+            if ($token_length > 8) {
+                $anonymized_frenet_token = substr($frenet_token, 0, 4) . str_repeat('*', $token_length - 8) . substr($frenet_token, -4);
+            } else {
+                $anonymized_frenet_token = $frenet_token; // Token is too short to anonymize
             }
         }
         
@@ -104,14 +116,20 @@ class SPS_Admin_Groups {
                 <h2>Simulação de Frete para Grupo</h2>
                 
                 <div class="sps-api-info notice notice-info" style="margin-bottom: 15px; padding: 10px;">
-                    <p><strong>Informações da API:</strong> 
-                        <?php if (!empty($anonymized_token)): ?>
-                            Token: <?php echo esc_html($anonymized_token); ?> 
+                    <p><strong>Informações das APIs:</strong><br>
+                        <strong>Central do Frete:</strong> 
+                        <?php if (!empty($anonymized_central_token)): ?>
+                            Token: <?php echo esc_html($anonymized_central_token); ?> | Tipo de carga: <?php echo esc_html($cargo_types); ?>
                         <?php else: ?>
-                            Token não encontrado
-                        <?php endif; ?>
-                        | Tipo de carga: <?php echo esc_html($cargo_types); ?> 
-                        | <a href="<?php echo admin_url('admin.php?page=sps-settings'); ?>">Configurar</a>
+                            Token não configurado
+                        <?php endif; ?><br>
+                        <strong>Frenet:</strong> 
+                        <?php if (!empty($anonymized_frenet_token)): ?>
+                            Token: <?php echo esc_html($anonymized_frenet_token); ?>
+                        <?php else: ?>
+                            Token não configurado
+                        <?php endif; ?><br>
+                        <a href="<?php echo admin_url('admin.php?page=sps-settings'); ?>">Configurar APIs</a>
                     </p>
                 </div>
                 
@@ -131,7 +149,7 @@ class SPS_Admin_Groups {
                         <table class="wp-list-table widefat fixed striped">
                             <thead>
                                 <tr>
-                                    <th>Transportadora</th>
+                                    <th>Transportadora (API)</th>
                                     <th>Preço (R$)</th>
                                     <th>Prazo (dias)</th>
                                     <th>Tipo de Serviço</th>
@@ -205,8 +223,9 @@ class SPS_Admin_Groups {
                             else if (response.data.quotes && response.data.quotes.length > 0) {
                                 // Add each quote to the table
                                 $.each(response.data.quotes, function(index, quote) {
+                                    var sourceLabel = quote.source ? ' (' + quote.source + ')' : '';
                                     var row = '<tr>' +
-                                        '<td>' + quote.carrier + '</td>' +
+                                        '<td>' + quote.carrier + sourceLabel + '</td>' +
                                         '<td>R$ ' + parseFloat(quote.price).toFixed(2) + '</td>' +
                                         '<td>' + quote.delivery_time + '</td>' +
                                         '<td>' + quote.service + '</td>' +

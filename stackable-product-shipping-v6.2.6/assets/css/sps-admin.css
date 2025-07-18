@@ -287,6 +287,17 @@
     margin-bottom: 8px;
 }
 
+/* Hide WooCommerce notifications in SPS admin area */
+.sps-admin-wrap .error,
+.sps-admin-wrap .notice,
+.sps-admin-wrap .notice-error,
+.sps-admin-wrap .notice-warning,
+.sps-admin-wrap .notice-info,
+.sps-admin-wrap .notice-success,
+.sps-admin-wrap .updated {
+    display: none !important;
+}
+
 @media screen and (max-width: 782px) {
     .sps-dashboard-widgets {
         grid-template-columns: 1fr;

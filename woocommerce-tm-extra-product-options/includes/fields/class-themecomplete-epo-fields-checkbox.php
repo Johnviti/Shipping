@@ -1,0 +1,685 @@
+<?php
+/**
+ * Checkbox Field class
+ *
+ * @package Extra Product Options/Fields
+ * @version 6.4
+ * phpcs:disable PEAR.NamingConventions.ValidClassName
+ */
+
+defined( 'ABSPATH' ) || exit;
+
+/**
+ * Checkbox Field class
+ *
+ * @package Extra Product Options/Fields
+ * @version 6.4
+ */
+class THEMECOMPLETE_EPO_FIELDS_checkbox extends THEMECOMPLETE_EPO_FIELDS {
+
+	/**
+	 * The number of columns
+	 *
+	 * @var float
+	 */
+	public $items_per_row;
+
+	/**
+	 * The number of columns for responisve devices
+	 *
+	 * @var float
+	 */
+	public $items_per_row_r;
+
+	/**
+	 * The number of columns
+	 *
+	 * @var float
+	 */
+	public $columns;
+
+	/**
+	 * The choice counter
+	 *
+	 * @var float
+	 */
+	public $default_value_counter;
+
+	/**
+	 * Pre display field array
+	 *
+	 * @param array<mixed> $element The element array.
+	 * @param array<mixed> $args Array of arguments.
+	 * @since 1.0
+	 * @return void
+	 */
+	public function display_field_pre( $element = [], $args = [] ) {
+		$this->items_per_row   = $element['items_per_row'];
+		$this->items_per_row_r = isset( $element['items_per_row_r'] ) ? $element['items_per_row_r'] : [];
+		$this->columns         = 0;
+		$container_css_id      = 'element_';
+		if ( isset( $element['container_css_id'] ) ) {
+			$container_css_id = $element['container_css_id'];
+		}
+		if ( ! isset( $args['product_id'] ) ) {
+			$args['product_id'] = '';
+		}
+
+		if ( ! empty( $this->items_per_row ) ) {
+			if ( 'auto' === $this->items_per_row || ! is_numeric( $this->items_per_row ) || intval( $this->items_per_row ) === 0 ) {
+				$this->items_per_row = 0;
+			} else {
+				$this->items_per_row = (float) $this->items_per_row;
+				$calc                = 'calc((100% / var(--items-per-row)) - (((var(--items-per-row) - 1) / var(--items-per-row)) * var(--tcgapcolumn)))';
+				$flex_items          = '--items-per-row: ' . $this->items_per_row . ';';
+				$css_string          = '.tm-product-id-' . $args['product_id'] . ' .' . $container_css_id . $args['element_counter'] . $args['form_prefix'] . ' li{-ms-flex: 0 0 ' . $calc . ' !important;flex: 0 0 ' . $calc . ' !important;max-width:' . $calc . ' !important;' . $flex_items . '}';
+				$css_string          = str_replace( [ "\r", "\n" ], '', $css_string );
+				THEMECOMPLETE_EPO_DISPLAY()->add_inline_style( $css_string );
+			}
+		} else {
+			$this->items_per_row = 1;
+		}
+
+		foreach ( $this->items_per_row_r as $key => $value ) {
+			$before = '';
+			$after  = '}';
+			if ( ! empty( $value ) ) {
+				if ( 'desktop' !== $key ) {
+					switch ( $key ) {
+						case 'tablets_galaxy': // 800-1280
+							$before = '@media only screen and (min-device-width : 800px) and (max-device-width : 1280px),only screen and (min-width : 800px) and (max-width : 1280px) {';
+							break;
+						case 'tablets': // 768-1024
+							$before = '@media only screen and (min-device-width : 768px) and (max-device-width : 1024px),only screen and (min-width : 768px) and (max-width : 1024px) {';
+							break;
+						case 'tablets_small': // 481-767
+							$before = '@media only screen and (min-device-width : 481px) and (max-device-width : 767px),only screen and (min-width : 481px) and (max-width : 767px) {';
+							break;
+						case 'iphone6_plus': // 414-736
+							$before = '@media only screen and (min-device-width: 414px) and (max-device-width: 736px) and (-webkit-min-device-pixel-ratio: 2),only screen and (min-width: 414px) and (max--width: 736px) {';
+							break;
+						case 'iphone6': // 375-667
+							$before = '@media only screen and (min-device-width: 375px) and (max-device-width: 667px) and (-webkit-min-device-pixel-ratio: 2),only screen and (min-width: 375px) and (max-width: 667px) {';
+							break;
+						case 'galaxy': // 320-640
+							$before = '@media only screen and (device-width: 320px) and (device-height: 640px) and (-webkit-min-device-pixel-ratio: 2),only screen and (width: 320px) and (height: 640px) {';
+							break;
+						case 'iphone5': // 320-568
+							$before = '@media only screen and (min-device-width: 320px) and (max-device-width: 568px) and (-webkit-min-device-pixel-ratio: 2), only screen and (min-width: 320px) and (max-width: 568px) {';
+							break;
+						case 'smartphones': // 320-480
+							$before = '@media only screen and (min-device-width : 320px) and (max-device-width : 480px), only screen and (min-width : 320px) and (max-width : 480px), only screen and (max-width : 319px){';
+							break;
+
+						default:
+							// code...
+							break;
+					}
+					$thisitems_per_row = (float) $value;
+					$this_percent      = (float) ( 100 / $thisitems_per_row );
+					$calc              = 'calc((100% / var(--items-per-row)) - (((var(--items-per-row) - 1) / var(--items-per-row)) * var(--tcgapcolumn)))';
+					$flex_items        = '--items-per-row: ' . $thisitems_per_row . ';';
+					$css_string        = $before . '.tm-product-id-' . $args['product_id'] . ' .' . $container_css_id . $args['element_counter'] . $args['form_prefix'] . ' li{-ms-flex: 0 0 ' . $calc . ' !important;flex: 0 0 ' . $calc . ' !important;max-width:' . $calc . ' !important;' . $flex_items . '}' . $after;
+					$css_string        = str_replace( [ "\r", "\n" ], '', $css_string );
+					THEMECOMPLETE_EPO_DISPLAY()->add_inline_style( $css_string );
+				}
+			}
+		}
+
+		$this->default_value_counter = 0;
+	}
+
+	/**
+	 * Display field array
+	 *
+	 * @param array<mixed> $element The element array.
+	 * @param array<mixed> $args Array of arguments.
+	 * @since 1.0
+	 * @return array<mixed>
+	 */
+	public function display_field( $element = [], $args = [] ) {
+		++$this->columns;
+		$default_value = isset( $element['default_value'] )
+			?
+			( ( is_array( $element['default_value'] ) )
+				? in_array( (string) $this->default_value_counter, $element['default_value'], true )
+				: false )
+			: false;
+
+		if ( (float) $this->columns > (float) $this->items_per_row && $this->items_per_row > 0 ) {
+			$this->columns = 1;
+		}
+
+		$hexclass         = '';
+		$li_class         = '';
+		$search_for_color = $args['label'];
+		if ( isset( $element['color'] ) ) {
+			if ( ! is_array( $element['color'] ) ) {
+				$search_for_color = $element['color'];
+			} elseif ( isset( $element['color'][ $this->default_value_counter ] ) ) {
+				$search_for_color = $element['color'][ $this->default_value_counter ];
+			}
+			if ( empty( $search_for_color ) ) {
+				$search_for_color = 'transparent';
+			}
+		}
+
+		$unique_indentifier = $args['element_counter'] . '-' . $args['field_counter'] . '-' . $args['tabindex'] . $args['form_prefix'] . uniqid();
+
+		if ( ( 'image' === $element['replacement_mode'] || 'color' === $element['replacement_mode'] ) && ( 'transparent' === $search_for_color || preg_match( '/#([a-f]|[A-F]|[0-9]){3}(([a-f]|[A-F]|[0-9]){3})?\b/', $search_for_color ) ) ) {
+			$css_string   = '';
+			$tmhexcolor   = 'tmhexcolor_' . $unique_indentifier;
+			$litmhexcolor = 'tm-li-unique-' . $unique_indentifier;
+			if ( 'image' === $element['replacement_mode'] || 'color' === $element['replacement_mode'] ) {
+				$hexclass   = $tmhexcolor;
+				$css_string = '.' . $tmhexcolor . ' .tmhexcolorimage .tc-image{background-color:' . $search_for_color . ' !important;}';
+			}
+			if ( ! empty( $element['item_width'] ) ) {
+				if ( is_numeric( $element['item_width'] ) ) {
+					$element['item_width'] .= 'px';
+				}
+				$css_string .= '.' . $tmhexcolor . ' img{display: inline-block !important;width:' . $element['item_width'] . ' !important;min-width:' . $element['item_width'] . ' !important;max-width:' . $element['item_width'] . ' !important;}';
+				$css_string .= '.tm-extra-product-options ul.tmcp-ul-wrap .' . $tmhexcolor . ' .tmhexcolorimage .tc-image{padding: 1px !important;display: inline-block !important;width:' . $element['item_width'] . ' !important;min-width:' . $element['item_width'] . ' !important;max-width:' . $element['item_width'] . ' !important;}';
+			}
+			if ( ! empty( $element['item_height'] ) ) {
+				if ( is_numeric( $element['item_height'] ) ) {
+					$element['item_height'] .= 'px';
+				}
+				$css_string .= '.' . $tmhexcolor . ' img{display: inline-block !important;height:' . $element['item_height'] . ' !important;min-height:' . $element['item_height'] . ' !important;max-height:' . $element['item_height'] . ' !important;}';
+				$css_string .= '.tm-extra-product-options ul.tmcp-ul-wrap .' . $tmhexcolor . ' .tmhexcolorimage .tc-image{padding: 1px !important;display: inline-block !important;height:' . $element['item_height'] . ' !important;min-height:' . $element['item_height'] . ' !important;max-height:' . $element['item_height'] . ' !important;    padding-top: 0 !important;}';
+				$css_string .= '.tm-extra-product-options ul.tmcp-ul-wrap .' . $litmhexcolor . '{min-width: 0 !important;}';
+			}
+			if ( ! empty( $element['item_width'] ) || ! empty( $element['item_height'] ) ) {
+				$css_string .= '.tmhexcolorimage-li' . $litmhexcolor . '{display: inline-block;width:auto !important;overflow:hidden;}';
+				$li_class   .= 'tmhexcolorimage-li ' . $litmhexcolor;
+			} else {
+				$li_class .= 'tmhexcolorimage-li-nowh';
+			}
+			if ( ! empty( $css_string ) ) {
+				$css_string = str_replace( [ "\r", "\n" ], '', $css_string );
+				THEMECOMPLETE_EPO_DISPLAY()->add_inline_style( $css_string );
+			}
+		}
+		$_css_class = '';
+		if ( ! empty( $hexclass ) ) {
+			$_css_class = ! empty( $element['class'] ) ? $element['class'] . ' ' . $hexclass : '' . $hexclass;
+		}
+		$css_class = apply_filters( 'wc_epo_multiple_options_css_class', '', $element, $this->default_value_counter );
+		if ( '' !== $css_class ) {
+			$css_class = ' ' . $css_class;
+		}
+		$css_class = $_css_class . $css_class;
+
+		$use = '';
+
+		if ( 'image' === $element['replacement_mode'] || 'color' === $element['replacement_mode'] ) {
+			$use = ' use_images';
+		}
+
+		$image                 = isset( $element['images'][ $args['field_counter'] ] ) ? $element['images'][ $args['field_counter'] ] : '';
+		$imagec                = isset( $element['imagesc'][ $args['field_counter'] ] ) ? $element['imagesc'][ $args['field_counter'] ] : '';
+		$imagep                = isset( $element['imagesp'][ $args['field_counter'] ] ) ? $element['imagesp'][ $args['field_counter'] ] : '';
+		$imagel                = isset( $element['imagesl'][ $args['field_counter'] ] ) ? $element['imagesl'][ $args['field_counter'] ] : '';
+		$label                 = apply_filters( 'woocommerce_tm_epo_option_name', $args['label'], $element, $this->default_value_counter );
+		$label_mode            = '';
+		$changes_product_image = empty( $element['changes_product_image'] ) ? '' : $element['changes_product_image'];
+		$limit                 = empty( $element['limit'] ) ? '' : $element['limit'];
+		$exactlimit            = empty( $element['exactlimit'] ) ? '' : $element['exactlimit'];
+		$minimumlimit          = empty( $element['minimumlimit'] ) ? '' : $element['minimumlimit'];
+
+		if ( 'relative' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_global_image_mode' ) ) {
+			if ( str_contains( $image, get_site_url() ) ) {
+				$image  = wp_make_link_relative( $image );
+				$imagec = wp_make_link_relative( $imagec );
+				$imagep = wp_make_link_relative( $imagep );
+				$imagel = wp_make_link_relative( $imagel );
+			}
+		}
+
+		if ( empty( $image ) ) {
+			$image = '';
+		}
+		if ( empty( $imagec ) ) {
+			$imagec = '';
+		}
+		if ( empty( $imagep ) || empty( $changes_product_image ) ) {
+			$imagep = '';
+		}
+		if ( ! empty( $changes_product_image ) && 'images' === $changes_product_image ) {
+			$imagep = '';
+		}
+		if ( empty( $imagel ) ) {
+			$imagel = '';
+		}
+
+		$selected_value = '';
+		if ( isset( $args['posted_name'] ) ) {
+			$name = $args['posted_name'];
+			if ( 'no' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_global_reset_options_after_add' ) && isset( $this->post_data[ $name ] ) ) {
+				$selected_value = $this->post_data[ $name ];
+			} elseif ( empty( $this->post_data ) && isset( $_REQUEST[ $name ] ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$selected_value = wp_unslash( $_REQUEST[ $name ] ); // phpcs:ignore WordPress.Security.ValidatedSanitizedInput.InputNotSanitized, WordPress.Security.NonceVerification.Recommended
+
+			} elseif ( ( ( THEMECOMPLETE_EPO()->is_quick_view() || ( empty( $this->post_data ) || ( isset( $this->post_data['action'] ) && 'wc_epo_get_associated_product_html' === $this->post_data['action'] ) ) ) && empty( THEMECOMPLETE_EPO()->cart_edit_key ) ) || 'yes' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_global_reset_options_after_add' ) || ( ! empty( $this->post_data ) && ! isset( $_REQUEST[ $args['posted_name'] ] ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				$selected_value = -1;
+			}
+		}
+
+		$selected_value = apply_filters( 'wc_epo_default_value', $selected_value, $element, esc_attr( $args['value'] ) );
+
+		if ( is_array( $selected_value ) ) {
+
+			if ( isset( $args['get_posted_key'] ) && isset( $selected_value[ $args['get_posted_key'] ] ) ) {
+				$selected_value = $selected_value[ $args['get_posted_key'] ];
+			} else {
+				$selected_value = '';
+			}
+		}
+
+		$checked = false;
+
+		if ( -1 === $selected_value ) {
+			if ( ( THEMECOMPLETE_EPO()->is_quick_view() || ( ( empty( $this->post_data ) || ( ! empty( $this->post_data ) && ( ! isset( $this->post_data['quantity'] ) || ( isset( $args['posted_name'] ) && ! isset( $_REQUEST[ $args['posted_name'] ] ) && ! isset( $this->post_data['tm-epo-counter'] ) ) ) ) ) || ( isset( $this->post_data['action'] ) && 'wc_epo_get_associated_product_html' === $this->post_data['action'] ) ) || 'yes' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_global_reset_options_after_add' ) ) ) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+				if ( $default_value && ! THEMECOMPLETE_EPO()->is_edit_mode() ) {
+					$checked = true;
+				}
+			}
+		} elseif ( esc_attr( stripcslashes( $selected_value ) ) === esc_attr( ( $args['value'] ) ) ) {
+			$checked = true;
+		}
+		if ( empty( $exactlimit ) ) {
+			$exactlimit = '';
+		}
+		if ( empty( $minimumlimit ) ) {
+			$minimumlimit = '';
+		}
+
+		if ( empty( $limit ) ) {
+			$limit = '';
+		}
+
+		$replacement_mode    = $element['replacement_mode'];
+		$swatch_position     = $element['swatch_position'];
+		$showtooltip         = empty( $element['show_tooltip'] ) || ( 'image' !== $replacement_mode && 'color' !== $replacement_mode ) ? '' : $element['show_tooltip'];
+		$use_lightbox        = isset( $element['use_lightbox'] ) ? $element['use_lightbox'] : '';
+		$choice_counter      = $this->default_value_counter;
+		$show_label          = empty( $element['show_label'] ) ? '' : $element['show_label'];
+		$tm_epo_no_lazy_load = THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_no_lazy_load' );
+		if ( isset( $element['color'] ) ) {
+			$color = $element['color'];
+		}
+		if ( ! isset( $args['border_type'] ) ) {
+			$border_type = '';
+		} else {
+			$border_type = $args['border_type'];
+		}
+
+		$swatch       = [];
+		$swatch_class = '';
+		$altsrc       = [];
+
+		$label_to_display = $label;
+
+		if ( 'text' === $replacement_mode ) {
+			$label_mode = 'text';
+		}
+
+		if ( 'image' === $replacement_mode || 'color' === $replacement_mode ) {
+
+			if ( 'swatch' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch' => 'on' ];
+			} elseif ( 'swatch_desc' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-desc' => 'on' ];
+			} elseif ( 'swatch_lbl_desc' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-lbl-desc' => 'on' ];
+			} elseif ( 'swatch_img' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-img' => 'on' ];
+			} elseif ( 'swatch_img_lbl' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-img-lbl' => 'on' ];
+			} elseif ( 'swatch_img_desc' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-img-desc' => 'on' ];
+			} elseif ( 'swatch_img_lbl_desc' === $showtooltip ) {
+				$swatch_class = ' tm-tooltip';
+				$swatch[]     = [ 'data-tm-tooltip-swatch-img-lbl-desc' => 'on' ];
+			}
+
+			if ( 'image' === $replacement_mode && ! empty( $image ) ) {
+				if ( 'yes' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_global_retrieve_image_sizes' ) ) {
+					$attachment_id = THEMECOMPLETE_EPO_HELPER()->get_attachment_id( $image );
+					$attachment_id = ( $attachment_id ) ? $attachment_id : 0;
+					$image_info    = THEMECOMPLETE_EPO_HELPER()->get_attachment_sizes( $attachment_id, $image );
+					$attachment_id = THEMECOMPLETE_EPO_HELPER()->get_attachment_id( $imagec );
+					$attachment_id = ( $attachment_id ) ? $attachment_id : 0;
+					$imagec_info   = THEMECOMPLETE_EPO_HELPER()->get_attachment_sizes( $attachment_id, $imagec );
+				} else {
+					$image_info  = [ '', '' ];
+					$imagec_info = [ '', '' ];
+				}
+
+				if ( 'no' === $tm_epo_no_lazy_load ) {
+					$altsrc = [
+						'src'           => '',
+						'data-original' => $image,
+					];
+					if ( $image_info ) {
+						$altsrc['width']  = $image_info[0];
+						$altsrc['height'] = $image_info[1];
+					}
+					if ( $checked && ! empty( $imagec ) ) {
+						$altsrc['data-original'] = $imagec;
+						if ( $imagec_info ) {
+							$altsrc['width']  = $imagec_info[0];
+							$altsrc['height'] = $imagec_info[1];
+						}
+					}
+				} else {
+					$altsrc = [ 'src' => $image ];
+					if ( $image_info ) {
+						$altsrc['width']  = $image_info[0];
+						$altsrc['height'] = $image_info[1];
+					}
+					if ( $checked && ! empty( $imagec ) ) {
+						$altsrc['src'] = $imagec;
+						if ( $imagec_info ) {
+							$altsrc['width']  = $imagec_info[0];
+							$altsrc['height'] = $imagec_info[1];
+						}
+					}
+				}
+				if ( ! empty( $use_lightbox ) && 'lightbox' === $use_lightbox ) {
+					$swatch_class .= ' tc-lightbox-image';
+				}
+				$label_mode = 'images';
+			} else {
+				// Check for hex color.
+				$search_for_color = $label;
+				if ( isset( $color ) ) {
+					if ( ! is_array( $color ) ) {
+						$search_for_color = $color;
+					} elseif ( isset( $color[ $choice_counter ] ) ) {
+						$search_for_color = $color[ $choice_counter ];
+					}
+					if ( empty( $search_for_color ) ) {
+						$search_for_color = 'transparent';
+					}
+				}
+				if ( 'transparent' === $search_for_color || preg_match( '/#([a-f]|[A-F]|[0-9]){3}(([a-f]|[A-F]|[0-9]){3})?\b/', $search_for_color ) ) { // hex color is valid.
+
+					if ( 'transparent' === $search_for_color ) {
+						$swatch_class .= ' tm-transparent-swatch';
+					}
+
+					if ( 'color' === $replacement_mode ) {
+						$label_mode = 'color';
+					}
+					$label_to_display = ( ! isset( $color ) ) ? $search_for_color : $label;
+				}
+			}
+
+			if ( ! empty( $swatch ) ) {
+				$swatch[] = [ 'data-tm-hide-label' => THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_swatch_hide_label' ) ];
+			}
+
+			switch ( $swatch_position ) {
+
+				case 'start':
+					if ( ! empty( $label_mode ) ) {
+						$label_mode = 'start' . $label_mode;
+					}
+					break;
+
+				case 'end':
+					if ( ! empty( $label_mode ) ) {
+						$label_mode = 'end' . $label_mode;
+					}
+					break;
+			}
+		}
+
+		if ( ! empty( $li_class ) ) {
+			$li_class = ' ' . $li_class;
+		} else {
+			$li_class = '';
+		}
+
+		if ( ! empty( $this->items_per_row ) ) {
+			$li_class .= ' tm-per-row';
+		} else {
+			$li_class .= ' tm-auto-row';
+		}
+
+		$image_variations = [];
+		if ( ! empty( $changes_product_image ) ) {
+			$image_link       = $image;
+			$image_variations = THEMECOMPLETE_EPO_HELPER()->generate_image_array( $image_variations, $image_link, 'image' );
+
+			$image_link       = $imagep;
+			$image_variations = THEMECOMPLETE_EPO_HELPER()->generate_image_array( $image_variations, $image_link, 'imagep' );
+		}
+
+		$labelclass       = '';
+		$labelclass_start = '';
+		$labelclass_end   = '';
+		if ( 'yes' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_css_styles' ) && ( 'none' === $replacement_mode || ( ( 'image' === $replacement_mode || 'color' === $replacement_mode ) && 'center' !== $swatch_position ) ) ) {
+			$labelclass       = THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_css_styles_style' );
+			$labelclass_start = THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_css_styles_style' ) . ( empty( $hexclass ) ? '' : ' ' . $hexclass );
+			$labelclass_end   = true;
+		}
+
+		$is_separator = '-1' === strstr( $args['value'], '_', true ) && '-1' !== $args['value'];
+		if ( $is_separator ) {
+			$li_class .= ' is-separator';
+		}
+		$class_label = '';
+		if ( 'yes' === THEMECOMPLETE_EPO_DATA_STORE()->get( 'tm_epo_select_fullwidth' ) ) {
+			$class_label = ' fullwidth';
+		}
+		$display = [
+			'is_separator'          => $is_separator,
+			'hexclass'              => $hexclass,
+			'label_mode'            => $label_mode,
+			'label_to_display'      => $label_to_display,
+			'swatch_class'          => $swatch_class,
+			'swatch'                => $swatch,
+			'altsrc'                => $altsrc,
+			'use'                   => $use,
+			'labelclass_start'      => $labelclass_start,
+			'labelclass'            => $labelclass,
+			'labelclass_end'        => $labelclass_end,
+			'image_variations'      => wp_json_encode( $image_variations ),
+			'checked'               => $checked,
+			'li_class'              => $li_class,
+			'class'                 => $css_class,
+			'label'                 => $label,
+			'value'                 => $args['value'],
+			'element_id'            => 'tmcp_choice_' . str_replace( '-', '_', $unique_indentifier ),
+			'textbeforeprice'       => isset( $element['text_before_price'] ) ? $element['text_before_price'] : '',
+			'textafterprice'        => isset( $element['text_after_price'] ) ? $element['text_after_price'] : '',
+			'hide_amount'           => $this->get_value( $element, 'hide_amount', '' ),
+			'replacement_mode'      => $replacement_mode,
+			'swatch_position'       => $swatch_position,
+			'use_lightbox'          => $use_lightbox,
+			'use_url'               => $element['use_url'],
+			'items_per_row'         => $this->items_per_row,
+			'items_per_row_r'       => $this->items_per_row_r,
+			'image'                 => $image,
+			'imagec'                => $imagec,
+			'imagep'                => $imagep,
+			'imagel'                => $imagel,
+			'url'                   => isset( $element['url'][ $args['field_counter'] ] ) ? $element['url'][ $args['field_counter'] ] : '',
+			'limit'                 => $limit,
+			'exactlimit'            => $exactlimit,
+			'minimumlimit'          => $minimumlimit,
+			'show_tooltip'          => $showtooltip,
+			'tm_epo_no_lazy_load'   => $tm_epo_no_lazy_load,
+			'changes_product_image' => $changes_product_image,
+			'default_value'         => $default_value,
+			'quantity'              => isset( $element['quantity'] ) ? $element['quantity'] : '',
+			'choice_counter'        => $choice_counter,
+			'class_label'           => $class_label,
+		];
+
+		if ( isset( $color ) ) {
+			$display['color'] = $color;
+		}
+
+		$display['fieldtype'] = '';
+		if ( isset( $args['fieldtype'] ) ) {
+			$display['fieldtype'] = $args['fieldtype'];
+		}
+		if ( ! empty( $changes_product_image ) ) {
+			$display['fieldtype'] .= ' tm-product-image';
+		}
+
+		if ( ! empty( $args['element_data_attr'] ) && is_array( $args['element_data_attr'] ) ) {
+			$display['element_data_attr'] = $args['element_data_attr'];
+		} else {
+			$display['element_data_attr'] = [];
+		}
+
+		++$this->default_value_counter;
+
+		return apply_filters( 'wc_epo_display_field_checkbox', $display, $this, $element, $args );
+	}
+
+	/**
+	 * Field validation
+	 *
+	 * @since 1.0
+	 * @return array<mixed>
+	 */
+	public function validate() {
+
+		$passed       = true;
+		$message      = [];
+		$min_quantity = isset( $this->element['quantity_min'] ) ? (int) $this->element['quantity_min'] : 0;
+		if ( apply_filters( 'wc_epo_field_min_quantity_greater_than_zero', true ) && $min_quantity < 0 ) {
+			$min_quantity = 0;
+		}
+
+		$limit        = isset( $this->element['limit'] ) && '' !== $this->element['limit'] ? (int) $this->element['limit'] : '';
+		$exactlimit   = isset( $this->element['exactlimit'] ) && '' !== $this->element['exactlimit'] ? (int) $this->element['exactlimit'] : '';
+		$minimumlimit = isset( $this->element['minimumlimit'] ) && '' !== $this->element['minimumlimit'] ? (int) $this->element['minimumlimit'] : '';
+
+		$checked = 0;
+
+		foreach ( $this->tmcp_attributes as $k => $attribute ) {
+
+			if ( isset( $this->epo_post_fields[ $attribute ] ) ) {
+
+				$quantity = 1;
+				if ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) ) {
+					$quantity = (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] );
+				}
+
+				$checked = $checked + $quantity;
+
+				if ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) &&
+					! ( (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] ) >= $min_quantity )
+				) {
+					$passed = false;
+					/* translators: %1 element name %2 quantity. */
+					$message[] = sprintf( esc_html__( 'The quantity for "%1$s" must be greater than %2$s', 'woocommerce-tm-extra-product-options' ), $this->element['options'][ $this->epo_post_fields[ $attribute ] ], $min_quantity );
+				} elseif ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) &&
+					( 0 === (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] ) )
+				) {
+					$passed = false;
+					/* translators: %s element name. */
+					$message[] = sprintf( esc_html__( 'The quantity for "%s" must be greater than 0 to be added to the cart.', 'woocommerce-tm-extra-product-options' ), $this->element['options'][ $this->epo_post_fields[ $attribute ] ] );
+				}
+			}
+		}
+
+		foreach ( $this->tmcp_attributes_fee as $k => $attribute ) {
+
+			if ( isset( $this->epo_post_fields[ $attribute ] ) ) {
+
+				$quantity = 1;
+				if ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) ) {
+					$quantity = (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] );
+				}
+
+				$checked = $checked + $quantity;
+
+				if ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) &&
+					! ( (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] ) >= $min_quantity )
+				) {
+					$passed = false;
+					/* translators: %1 element label %2 quantity value. */
+					$message[] = sprintf( esc_html__( 'The quantity for "%1$s" must be greater than %2$s', 'woocommerce-tm-extra-product-options' ), $this->element['options'][ $this->epo_post_fields[ $attribute ] ], $min_quantity );
+				} elseif ( isset( $this->epo_post_fields[ $attribute . '_quantity' ] ) &&
+					( 0 === (int) array_sum( (array) $this->epo_post_fields[ $attribute . '_quantity' ] ) )
+				) {
+					$passed = false;
+					/* translators: %s element label */
+					$message[] = sprintf( esc_html__( 'The quantity for "%s" must be greater than 0 to be added to the cart.', 'woocommerce-tm-extra-product-options' ), $this->element['options'][ $this->epo_post_fields[ $attribute ] ] );
+				}
+			}
+		}
+
+		if ( '' !== $limit ) {
+			if ( $checked > $limit ) {
+				$passed = false;
+				if ( '1' === (string) $limit ) {
+					/* translators: %1 number of choice (1 singlular) %2 element name. */
+					$message[] = sprintf( esc_html__( 'You can only select up to %1$s choice for %2$s.', 'woocommerce-tm-extra-product-options' ), $limit, $this->element['label'] );
+				} else {
+					/* translators: %1 number of choices %2 element name. */
+					$message[] = sprintf( esc_html__( 'You can only select up to %1$s choices for %2$s.', 'woocommerce-tm-extra-product-options' ), $limit, $this->element['label'] );
+				}
+			}
+		}
+
+		if ( '' !== $exactlimit ) {
+			if ( $checked !== $exactlimit ) {
+				$passed = false;
+				if ( '1' === (string) $exactlimit ) {
+					/* translators: %1 number of choice (1 singlular) %2 element name. */
+					$message[] = sprintf( esc_html__( 'You must select exactly %1$s choice for %2$s.', 'woocommerce-tm-extra-product-options' ), $exactlimit, $this->element['label'] );
+				} else {
+					/* translators: %1 number of choices %2 element name. */
+					$message[] = sprintf( esc_html__( 'You must select exactly %1$s choices for %2$s.', 'woocommerce-tm-extra-product-options' ), $exactlimit, $this->element['label'] );
+				}
+			}
+		}
+
+		if ( '' !== $minimumlimit ) {
+			if ( $checked < $minimumlimit ) {
+				$passed = false;
+				if ( '1' === (string) $minimumlimit ) {
+					/* translators: %1 number of choice (1 singlular) %2 element name. */
+					$message[] = sprintf( esc_html__( 'You must select at least %1$s choice for %2$s.', 'woocommerce-tm-extra-product-options' ), $minimumlimit, $this->element['label'] );
+				} else {
+					/* translators: %1 number of choices %2 element name. */
+					$message[] = sprintf( esc_html__( 'You must select at least %1$s choices for %2$s.', 'woocommerce-tm-extra-product-options' ), $minimumlimit, $this->element['label'] );
+				}
+			}
+		}
+
+		if ( $this->element['required'] ) {
+			$check1 = array_intersect( $this->tmcp_attributes, array_keys( $this->epo_post_fields ) );
+			$check2 = array_intersect( $this->tmcp_attributes_fee, array_keys( $this->epo_post_fields ) );
+
+			$fail1 = empty( $check1 );
+			$fail2 = empty( $check2 );
+
+			$fail = apply_filters( 'wc_epo_validate_checkbox', $fail1 && $fail2, $this );
+
+			if ( $fail ) {
+				$passed    = false;
+				$message[] = 'required';
+			}
+		}
+
+		return [
+			'passed'  => $passed,
+			'message' => $message,
+		];
+	}
+}

@@ -1,0 +1,80 @@
+/* stylelint-disable no-descending-specificity */
+.tcpagination {
+	display: block;
+	padding-left: 0;
+	margin: 2em 0;
+	border-radius: 4px;
+}
+
+.tcpagination ul {
+	margin: 0;
+}
+
+.tcpagination ul > li {
+	display: inline;
+	margin: 0;
+}
+
+.tcpagination ul > li > a,
+.tcpagination ul > li > span {
+	position: relative;
+	float: left;
+	padding: 6px 12px;
+	margin-left: 0;
+	line-height: 1.42857143;
+	color: #9b96b5;
+	text-decoration: none;
+	background-color: rgba(0, 0, 0, 0.05);
+	border-color: rgba(0, 0, 0, 0.1);
+	border-style: solid;
+	border-width: 2px 1px;
+}
+
+.tcpagination ul > li:first-child > a,
+.tcpagination ul > li:first-child > span {
+	margin-left: 0;
+	border-top-left-radius: 5px;
+	border-bottom-left-radius: 5px;
+	border-width: 2px;
+}
+
+.tcpagination ul > li:last-child > a,
+.tcpagination ul > li:last-child > span {
+	border-top-right-radius: 5px;
+	border-bottom-right-radius: 5px;
+	border-width: 2px;
+}
+
+.tcpagination ul > li > a:hover,
+.tcpagination ul > li > span:hover,
+.tcpagination ul > li > a:focus,
+.tcpagination ul > li > span:focus {
+	z-index: 3;
+	color: var(--tc-color);
+	outline: 0 !important;
+	-webkit-box-shadow: none !important;
+	box-shadow: none !important;
+}
+
+.tcpagination ul > .active > a,
+.tcpagination ul > .active > span,
+.tcpagination ul > .active > a:hover,
+.tcpagination ul > .active > span:hover,
+.tcpagination ul > .active > a:focus,
+.tcpagination ul > .active > span:focus {
+	z-index: 2;
+	color: #fff;
+	cursor: default;
+	background-color: var(--tc-color);
+	border-color: var(--tc-color);
+}
+
+.tcpagination ul > .disabled > span,
+.tcpagination ul > .disabled > span:hover,
+.tcpagination ul > .disabled > span:focus,
+.tcpagination ul > .disabled > a,
+.tcpagination ul > .disabled > a:hover,
+.tcpagination ul > .disabled > a:focus {
+	color: #d3d3d3;
+	cursor: not-allowed;
+}

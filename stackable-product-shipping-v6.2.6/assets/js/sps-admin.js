@@ -1,5 +1,16 @@
 
-jQuery(document).ready(function($){
+jQuery(document).ready(function($) {
+
+    // Remove WooCommerce admin notices from SPS pages
+    function removeWooCommerceNotices() {
+        $('.sps-admin-wrap .error, .sps-admin-wrap .notice, .sps-admin-wrap .notice-error, .sps-admin-wrap .notice-warning, .sps-admin-wrap .notice-info, .sps-admin-wrap .notice-success, .sps-admin-wrap .updated').remove();
+    }
+    
+    // Remove notices on page load
+    removeWooCommerceNotices();
+    
+    // Remove notices that might be added dynamically
+    setInterval(removeWooCommerceNotices, 1000);
 
     // Remove row
     $(document).on('click', '.sps-remove-product', function(){
@@ -22,10 +33,7 @@ jQuery(document).ready(function($){
             return false;
         }
     });
-});
 
-
-jQuery(document).ready(function($) {
     // Abrir modal de simulação para grupo
     $('.sps-simulate-group').on('click', function(e) {
         e.preventDefault();
@@ -96,11 +104,8 @@ jQuery(document).ready(function($) {
             }
         });
     });
-});
 
-jQuery(document).ready(function($) {
     // Abrir modal de simulação
-
     $('.sps-simulate-shipping-link').on('click', function(e) {
         e.preventDefault();
         $('#sps-shipping-simulation-modal').show();

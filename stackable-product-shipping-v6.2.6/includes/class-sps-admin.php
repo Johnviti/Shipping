@@ -9,6 +9,18 @@ class SPS_Admin {
     public static function init() {
         add_action('admin_menu', [__CLASS__, 'register_menu']);
         add_action('admin_enqueue_scripts', [__CLASS__, 'enqueue_scripts']);
+        add_action('admin_head', [__CLASS__, 'remove_admin_notices']);
+    }
+    
+    /**
+     * Remove admin notices on SPS plugin pages
+     */
+    public static function remove_admin_notices() {
+        $screen = get_current_screen();
+        if ($screen && (strpos($screen->id, 'empilhamento') !== false || strpos($screen->id, 'sps-') !== false)) {
+            remove_all_actions('admin_notices');
+            remove_all_actions('all_admin_notices');
+        }
     }
     
     /**

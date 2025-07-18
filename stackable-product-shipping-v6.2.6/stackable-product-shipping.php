@@ -1,15 +1,15 @@
 <?php
 /*
-Plugin Name: Stackable Product Shipping v6.2.3
+Plugin Name: Stackable Product Shipping v6.2.6
 Description: Permite criar grupos de empilhamento de produtos para cálculo de frete otimizado.
-Version: v6.2.3
+Version: v6.2.6
 Author: WPlugin
 */
 
 if (!defined('ABSPATH')) exit;
 
 // Define plugin version
-define('SPS_VERSION', 'v6.2.5');
+define('SPS_VERSION', 'v6.2.6');
 define('SPS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SPS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
