@@ -312,7 +312,8 @@ jQuery(document).ready(function($) {
         $('#sps-separate-results').empty();
         $('#sps-combined-results').empty();
         $('#sps-comparison-results').empty();
-
+        $('.sps-best-option-info').remove();
+        
         console.log('separateData', separateData);
         console.log('combinedData', combinedData);
         
@@ -326,6 +327,9 @@ jQuery(document).ready(function($) {
                 delivery_time: price.delivery_time || 'N/A'
             };
         }
+        
+        // Array para armazenar todas as opções de frete
+        let allOptions = [];
         
         // Processar resultados separados
         if (separateData) {
@@ -347,10 +351,18 @@ jQuery(document).ready(function($) {
             // Ordenar por preço
             allSeparateResults.sort((a, b) => a.price - b.price);
             
+            // Adicionar ao array de todas as opções
+            allSeparateResults.forEach(option => {
+                allOptions.push({
+                    ...option,
+                    type: 'separate'
+                });
+            });
+            
             // Exibir resultados separados
-            allSeparateResults.forEach(price => {
+            allSeparateResults.forEach((price, index) => {
                 const row = `
-                    <tr>
+                    <tr data-price="${price.price}" data-carrier="${price.shipping_carrier}" data-source="${price.source}" data-delivery="${price.delivery_time}" data-type="separate">
                         <td>${price.source}</td>
                         <td>${price.shipping_carrier}</td>
                         <td>${price.modal}</td>
@@ -385,10 +397,18 @@ jQuery(document).ready(function($) {
             // Ordenar por preço
             allCombinedResults.sort((a, b) => a.price - b.price);
             
+            // Adicionar ao array de todas as opções
+            allCombinedResults.forEach(option => {
+                allOptions.push({
+                    ...option,
+                    type: 'combined'
+                });
+            });
+            
             // Exibir resultados combinados
-            allCombinedResults.forEach(price => {
+            allCombinedResults.forEach((price, index) => {
                 const row = `
-                    <tr>
+                    <tr data-price="${price.price}" data-carrier="${price.shipping_carrier}" data-source="${price.source}" data-delivery="${price.delivery_time}" data-type="combined">
                         <td>${price.source}</td>
                         <td>${price.shipping_carrier}</td>
                         <td>${price.modal}</td>
@@ -519,6 +539,206 @@ jQuery(document).ready(function($) {
                 `;
                 $('#sps-comparison-results').append(summaryRow);
             }
+        }
+        
+        // Determinar e exibir a melhor opção geral
+        if (allOptions.length > 0) {
+            // Ordenar todas as opções por preço
+            allOptions.sort((a, b) => a.price - b.price);
+            const bestOption = allOptions[0];
+            
+            // Destacar a melhor opção na tabela
+            highlightBestOption(bestOption);
+            
+            // Exibir seção fixa da melhor opção
+            showBestOptionInfo(bestOption);
+        }
+    }
+    
+        // Função para exibir seção fixa da melhor opção de frete
+    function showBestOptionInfo(bestOption, targetContainer = '.sps-simulation-success') {
+        // Remover informações anteriores da melhor opção
+        $('.sps-best-option-info').remove();
+        
+        // Construir HTML da seção fixa
+        const infoHtml = `
+            <div class="sps-best-option-info">
+                <div class="sps-info-header">
+                    <span class="dashicons dashicons-awards"></span>
+                    🏆 MELHOR OPÇÃO DE FRETE
+                </div>
+                <div class="sps-info-content">
+                    <div class="sps-info-item">
+                        <div class="sps-info-label">Transportadora</div>
+                        <div class="sps-info-value">${bestOption.shipping_carrier}</div>
+                    </div>
+                    <div class="sps-info-item">
+                        <div class="sps-info-label">Preço</div>
+                        <div class="sps-info-value">R$ ${bestOption.price.toFixed(2)}</div>
+                    </div>
+                    <div class="sps-info-item">
+                        <div class="sps-info-label">Prazo</div>
+                        <div class="sps-info-value">${bestOption.delivery_time} dias</div>
+                    </div>
+                    <div class="sps-info-item">
+                        <div class="sps-info-label">Fonte</div>
+                        <div class="sps-info-value">${bestOption.source}</div>
+                    </div>
+                </div>
+                <div class="sps-info-description">
+                    Melhor custo-benefício entre todas as opções disponíveis
+                </div>
+            </div>
+        `;
+        
+        // Inserir a seção após o elemento com id="after-this"
+        if ($('#after-this').length > 0) {
+            $('#after-this').after(infoHtml);
+        } else if ($(targetContainer).length > 0) {
+            $(targetContainer).after(infoHtml);
+        } else {
+            // Fallback: inserir após o primeiro h3 encontrado
+            $('h3:contains("Resultados da Simulação")').first().after(infoHtml);
+        }
+        
+        // Mostrar a seção com animação
+        $('.sps-best-option-info').fadeIn(500);
+    }
+    
+    // Função para exibir o popup da melhor opção
+    function showBestOptionPopup(bestOption) {
+        // Remover popup anterior se existir
+        $('.sps-best-option-popup').remove();
+        
+        const popupHtml = `
+            <div class="sps-best-option-popup auto-hide">
+                <button class="sps-popup-close" onclick="$(this).parent().remove()">&times;</button>
+                <div class="sps-popup-header">
+                    <span class="dashicons dashicons-awards"></span>
+                    MELHOR OPÇÃO DE FRETE
+                </div>
+                <div class="sps-popup-content">
+                    <div class="sps-popup-carrier">
+                        ${bestOption.shipping_carrier} (${bestOption.source})
+                    </div>
+                    <div class="sps-popup-price">
+                        Preço: R$ ${bestOption.price.toFixed(2)}
+                    </div>
+                    <div class="sps-popup-delivery">
+                        Prazo: ${bestOption.delivery_time} dias
+                    </div>
+                    <div class="sps-popup-description">
+                        Melhor custo-benefício entre todas as opções
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('body').append(popupHtml);
+        
+        // Auto-remover após 4 segundos
+        setTimeout(() => {
+            $('.sps-best-option-popup').remove();
+        }, 4000);
+    }
+    
+    // Função para destacar a melhor opção na tabela
+    function highlightBestOption(bestOption) {
+        // Encontrar e destacar a linha correspondente
+        const targetTable = bestOption.type === 'separate' ? '#sps-separate-results' : '#sps-combined-results';
+        
+        $(`${targetTable} tr`).each(function() {
+            const row = $(this);
+            const rowPrice = parseFloat(row.data('price'));
+            const rowCarrier = row.data('carrier');
+            const rowSource = row.data('source');
+            
+            if (rowPrice === bestOption.price && 
+                rowCarrier === bestOption.shipping_carrier && 
+                rowSource === bestOption.source) {
+                row.addClass('sps-best-option-row');
+                return false; // Break the loop
+            }
+        });
+    }
+    
+    // Função para processar resultados de grupos (simulação de grupos)
+    function displayGroupResults(response) {
+        // Limpar resultados anteriores
+        $('#sps-group-stacked-results').empty();
+        $('.sps-best-option-info').remove();
+        
+        let allGroupOptions = [];
+        
+        // Processar resultados diretos da API
+        if (response.data && response.data.prices && Array.isArray(response.data.prices)) {
+            const prices = response.data.prices;
+            
+            if (prices.length > 0) {
+                // Normalizar e ordenar por preço
+                const normalizedPrices = prices.map(price => ({
+                    shipping_carrier: price.shipping_carrier || 'Desconhecido',
+                    price: parseFloat(price.price) || 0,
+                    delivery_time: price.delivery_time || '-',
+                    modal: price.modal || price.service_type || 'Padrão',
+                    source: 'API'
+                })).sort((a, b) => a.price - b.price);
+                
+                allGroupOptions = normalizedPrices;
+                
+                // Adicionar cada preço à tabela
+                normalizedPrices.forEach((price, index) => {
+                    const isFirst = index === 0;
+                    const rowClass = isFirst ? 'sps-best-option-row' : '';
+                    const row = `
+                        <tr class="${rowClass}" data-price="${price.price}" data-carrier="${price.shipping_carrier}" data-source="${price.source}" data-delivery="${price.delivery_time}">
+                            <td>${price.shipping_carrier}</td>
+                            <td>R$ ${price.price.toFixed(2)}</td>
+                            <td>${price.delivery_time}</td>
+                            <td>${price.modal}</td>
+                        </tr>
+                    `;
+                    $('#sps-group-stacked-results').append(row);
+                });
+            } else {
+                $('#sps-group-stacked-results').html('<tr><td colspan="4">Nenhuma cotação encontrada para este grupo.</td></tr>');
+            }
+        }
+        // Processar resultados no formato de quotes
+        else if (response.data.quotes && response.data.quotes.length > 0) {
+            const quotes = response.data.quotes.sort((a, b) => parseFloat(a.price) - parseFloat(b.price));
+            allGroupOptions = quotes.map(quote => ({
+                shipping_carrier: quote.carrier,
+                price: parseFloat(quote.price),
+                delivery_time: quote.delivery_time,
+                modal: quote.service,
+                source: quote.source || 'API'
+            }));
+            
+            quotes.forEach((quote, index) => {
+                const sourceLabel = quote.source ? ' (' + quote.source + ')' : '';
+                const isFirst = index === 0;
+                const rowClass = isFirst ? 'sps-best-option-row' : '';
+                const row = `
+                    <tr class="${rowClass}" data-price="${quote.price}" data-carrier="${quote.carrier}" data-source="${quote.source || 'API'}" data-delivery="${quote.delivery_time}">
+                        <td>${quote.carrier}${sourceLabel}</td>
+                        <td>R$ ${parseFloat(quote.price).toFixed(2)}</td>
+                        <td>${quote.delivery_time}</td>
+                        <td>${quote.service}</td>
+                    </tr>
+                `;
+                $('#sps-group-stacked-results').append(row);
+            });
+        } else {
+            $('#sps-group-stacked-results').html('<tr><td colspan="4">Nenhuma cotação encontrada para este grupo.</td></tr>');
+        }
+        
+        // Exibir informações da melhor opção para grupos
+        if (allGroupOptions.length > 0) {
+            const bestGroupOption = allGroupOptions[0]; // Já ordenado por preço
+            
+            // Exibir informações fixas da melhor opção
+            showBestOptionInfo(bestGroupOption, '.sps-group-simulation-success');
         }
     }
 });

@@ -121,7 +121,21 @@ class SPS_Admin_Simulator {
                 </div>
                 
                 <div class="sps-simulation-success" style="display:none;">
-                    <h3>Resultados da Simulação</h3>
+                    <h3 id="after-this">Resultados da Simulação</h3>
+                    
+                    <!-- Seção Fixa da Melhor Opção de Frete -->
+                    <div id="sps-best-option-info" class="sps-best-option-info" style="display:none;">
+                        <div class="sps-best-option-header">
+                            <span class="dashicons dashicons-awards"></span>
+                            🏆 MELHOR OPÇÃO DE FRETE
+                        </div>
+                        <div class="sps-best-option-details">
+                            <div class="sps-best-option-carrier"></div>
+                            <div class="sps-best-option-price"></div>
+                            <div class="sps-best-option-delivery"></div>
+                            <div class="sps-best-option-description">Melhor custo-benefício entre todas as opções</div>
+                        </div>
+                    </div>
                     
                     <div class="sps-simulation-tabs">
                         <button class="sps-tab-button active" data-tab="separate">Produtos Separados</button>
