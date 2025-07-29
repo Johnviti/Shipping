@@ -25,13 +25,15 @@ require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-admin-groups.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-admin-products.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-admin-settings.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-admin-simulator.php';
-// Inicializa a classe de instalação
 
-
+// Initialize classes
 register_activation_hook(__FILE__, ['SPS_Install','install']);
 new SPS_Ajax();
 add_action('admin_menu', ['SPS_Admin','register_menu']);
 add_action('admin_enqueue_scripts', ['SPS_Admin','enqueue_scripts']);
+
+// Initialize SPS_Admin_Products hooks
+add_action('init', ['SPS_Admin_Products', 'init']);
 
 // Register all AJAX handlers in one place
 add_action('init', 'sps_register_ajax_handlers');
@@ -44,6 +46,8 @@ function sps_register_ajax_handlers() {
     add_action('wp_ajax_sps_calculate_weight', ['SPS_AJAX', 'calculate_weight']);
     add_action('wp_ajax_sps_test_api', ['SPS_Admin_AJAX', 'ajax_test_api']);
     add_action('wp_ajax_sps_test_frenet_api', ['SPS_Admin_AJAX', 'ajax_test_frenet_api']);
+    add_action('wp_ajax_sps_export_excel', ['SPS_Admin_Products', 'export_to_excel']);
+    add_action('wp_ajax_sps_import_excel', ['SPS_Admin_Products', 'import_from_excel']);
 }
  
 // Enqueue frontend scripts
