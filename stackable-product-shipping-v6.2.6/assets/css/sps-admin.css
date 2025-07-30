@@ -32,7 +32,7 @@
    ======================================== */
 .wrap {
     max-width: 1200px;
-    margin: 0 auto;
+    margin: 25px auto;
     padding: 20px;
     background: #f0f0f1;
     min-height: calc(100vh - 32px);
@@ -167,9 +167,6 @@
 .form-table {
     background: var(--sps-white);
     border-radius: var(--sps-radius);
-    padding: 30px;
-    box-shadow: var(--sps-shadow);
-    border: 1px solid var(--sps-border-light);
     margin-bottom: 25px;
 }
 
@@ -1188,6 +1185,749 @@
 .sps-badge-secondary {
     background: var(--sps-secondary);
     color: var(--sps-white);
+}
+
+/* Produtos  */
+
+.sps-products-wrap {
+                max-width: 100%;
+            }
+            .sps-admin-header {
+                display: flex;
+                justify-content: space-between;
+                margin-bottom: 20px;
+                flex-wrap: wrap;
+            }
+            .sps-admin-description {
+                flex: 2;
+                min-width: 300px;
+                padding-right: 20px;
+            }
+            .sps-admin-actions {
+                flex: 1;
+                min-width: 250px;
+                display: flex;
+                flex-direction: column;
+                gap: 10px;
+            }
+            .sps-export-import-actions {
+                margin-bottom: 10px;
+                display: flex;
+                gap: 10px;
+                flex-wrap: wrap;
+            }
+            .sps-export-import-actions .button {
+                display: inline-flex;
+                align-items: center;
+                gap: 5px;
+            }
+            
+            /* Modal Styles */
+            .sps-modal {
+                position: fixed;
+                z-index: 100000;
+                left: 0;
+                top: 0;
+                width: 100%;
+                height: 100%;
+                background-color: rgba(0,0,0,0.5);
+            }
+            .sps-modal-content {
+                background-color: #fff;
+                margin: 3% auto;
+                border: 1px solid #ccc;
+                border-radius: 4px;
+                width: 80%;
+                max-width: 800px;
+                overflow-y: auto;
+            }
+            .sps-modal-header {
+                padding: 15px 20px;
+                border-bottom: 1px solid #ddd;
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                background-color: #f9f9f9;
+            }
+            .sps-modal-header h3 {
+                margin: 0;
+                font-size: 18px;
+            }
+            .sps-modal-close {
+                font-size: 24px;
+                font-weight: bold;
+                cursor: pointer;
+                color: #666;
+            }
+            .sps-modal-close:hover {
+                color: #000;
+            }
+            .sps-modal-body {
+                padding: 20px;
+            }
+            .sps-import-instructions {
+                background: #f8f9fa;
+                border-left: 4px solid #007cba;
+                padding: 15px;
+                margin-bottom: 20px;
+                border-radius: 2px;
+            }
+            .sps-import-instructions h4 {
+                margin-top: 0;
+                display: flex;
+                align-items: center;
+                color: #007cba;
+            }
+            .sps-import-instructions h4 .dashicons {
+                margin-right: 5px;
+            }
+            .sps-import-instructions ul {
+                margin-left: 20px;
+                list-style-type: disc;
+            }
+            .sps-sample-format {
+                margin-top: 15px;
+            }
+            .sps-sample-format h5 {
+                margin-bottom: 10px;
+                color: #333;
+            }
+            .sps-sample-format table {
+                font-size: 12px;
+            }
+            .sps-file-upload {
+                margin-bottom: 20px;
+            }
+            .sps-file-upload label {
+                display: block;
+                margin-bottom: 5px;
+                font-weight: bold;
+            }
+            .sps-file-upload input[type="file"] {
+                width: 100%;
+                padding: 8px;
+                border: 1px solid #ddd;
+                border-radius: 4px;
+            }
+            .sps-modal-actions {
+                text-align: right;
+                padding-top: 15px;
+                border-top: 1px solid #ddd;
+            }
+            .sps-modal-actions .button {
+                margin-left: 10px;
+            }
+            
+            .sps-search-box {
+                position: relative;
+                margin-bottom: 10px;
+            }
+            .sps-search-box .dashicons {
+                position: absolute;
+                left: 8px;
+                top: 50%;
+                transform: translateY(-50%);
+                color: #646970;
+            }
+            .sps-search-box input {
+                padding-left: 30px;
+                width: 100%;
+            }
+            .sps-filter-options {
+                margin-bottom: 15px;
+            }
+            .sps-table-container {
+                overflow-x: auto;
+                margin-bottom: 20px;
+            }
+            .stackable-products-table {
+                table-layout: auto;
+            }
+            .sps-checkbox-column {
+                text-align: center;
+            }
+            .sps-product-column {
+                width: 20%;
+            }
+            .sps-config-input {
+                width: 70px;
+            }
+            .sps-product-row.is-stackable {
+                background-color: #f0f7ff;
+            }
+            .sps-bulk-actions {
+                margin-bottom: 20px;
+            }
+            #sps-save-button {
+                margin-top: 10px;
+            }
+            @media screen and (max-width: 782px) {
+                .sps-admin-header {
+                    flex-direction: column;
+                }
+                .sps-admin-description, .sps-admin-actions {
+                    width: 100%;
+                    padding-right: 0;
+                }
+                .sps-modal-content {
+                    width: 95%;
+                    margin: 2% auto;
+                }
+            }
+/* ========================================
+   RADIO BUTTONS PARA STATUS EMPILHÁVEL
+   ======================================== */
+.sps-radio-column {
+    text-align: center;
+    padding: 15px 10px !important;
+}
+
+.sps-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+.sps-radio-option {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: var(--sps-transition);
+    background: var(--sps-light);
+    border: 1px solid var(--sps-border-light);
+    min-width: 60px;
+    justify-content: center;
+}
+
+.sps-radio-option:hover {
+    background: #e8e9ea;
+    border-color: var(--sps-border);
+}
+
+.sps-radio-option input[type="radio"] {
+    margin: 0 6px 0 0;
+    transform: scale(1.1);
+}
+
+.sps-radio-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sps-radio-yes {
+    color: var(--sps-success);
+}
+
+.sps-radio-no {
+    color: var(--sps-danger);
+}
+
+/* Estado ativo dos radio buttons */
+.sps-radio-option:has(input[value="1"]:checked) {
+    background: linear-gradient(135deg, var(--sps-success), #1b5e20);
+    border-color: var(--sps-success);
+}
+
+.sps-radio-option:has(input[value="0"]:checked) {
+    background: linear-gradient(135deg, var(--sps-danger), #b71c1c);
+    border-color: var(--sps-danger);
+}
+
+.sps-radio-option:has(input[type="radio"]:checked) .sps-radio-label {
+    color: var(--sps-white);
+}
+
+/* Linha da tabela com produto empilhável */
+.sps-product-row.is-stackable {
+    background: linear-gradient(90deg, #e8f5e8, #f1f8e9);
+    border-left: 4px solid var(--sps-success);
+}
+
+/* Responsividade para radio buttons */
+@media screen and (max-width: 782px) {
+    .sps-radio-group {
+        flex-direction: row;
+        gap: 5px;
+    }
+    
+    .sps-radio-option {
+        min-width: 45px;
+        padding: 4px 6px;
+    }
+    
+    .sps-radio-label {
+        font-size: 11px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .sps-radio-column {
+        padding: 10px 5px !important;
+    }
+    
+    .sps-radio-option {
+        min-width: 40px;
+        padding: 3px 5px;
+    }
+    
+    .sps-radio-label {
+        font-size: 10px;
+    }
+}
+
+/* ========================================
+   FINAL DAS MODIFICAÇÕES PARA RADIO BUTTONS
+   ======================================== */
+
+
+   /* ========================================
+   RADIO BUTTONS PARA STATUS EMPILHÁVEL
+   ======================================== */
+.sps-radio-column {
+    text-align: center;
+    padding: 15px 10px !important;
+}
+
+.sps-radio-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    align-items: center;
+}
+
+.sps-radio-option {
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    padding: 6px 10px;
+    border-radius: 6px;
+    transition: var(--sps-transition);
+    background: var(--sps-light);
+    border: 1px solid var(--sps-border-light);
+    min-width: 60px;
+    justify-content: center;
+}
+
+.sps-radio-option:hover {
+    background: #e8e9ea;
+    border-color: var(--sps-border);
+}
+
+.sps-radio-option input[type="radio"] {
+    margin: 0 6px 0 0;
+    transform: scale(1.1);
+}
+
+.sps-radio-label {
+    font-size: 12px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.sps-radio-yes {
+    color: var(--sps-success);
+}
+
+.sps-radio-no {
+    color: var(--sps-danger);
+}
+
+/* Estado ativo dos radio buttons */
+.sps-radio-option:has(input[value="1"]:checked) {
+    background: linear-gradient(135deg, var(--sps-success), #1b5e20);
+    border-color: var(--sps-success);
+}
+
+.sps-radio-option:has(input[value="0"]:checked) {
+    background: linear-gradient(135deg, var(--sps-danger), #b71c1c);
+    border-color: var(--sps-danger);
+}
+
+.sps-radio-option:has(input[type="radio"]:checked) .sps-radio-label {
+    color: var(--sps-white);
+}
+
+/* Linha da tabela com produto empilhável */
+.sps-product-row.is-stackable {
+    background: linear-gradient(90deg, #e8f5e8, #f1f8e9);
+    border-left: 4px solid var(--sps-success);
+}
+
+/* Responsividade para radio buttons */
+@media screen and (max-width: 782px) {
+    .sps-radio-group {
+        flex-direction: row;
+        gap: 5px;
+    }
+    
+    .sps-radio-option {
+        min-width: 45px;
+        padding: 4px 6px;
+    }
+    
+    .sps-radio-label {
+        font-size: 11px;
+    }
+}
+
+@media screen and (max-width: 480px) {
+    .sps-radio-column {
+        padding: 10px 5px !important;
+    }
+    
+    .sps-radio-option {
+        min-width: 40px;
+        padding: 3px 5px;
+    }
+    
+    .sps-radio-label {
+        font-size: 10px;
+    }
+}
+
+/* ========================================
+   METABOX DE PRODUTO - INTEGRAÇÃO WOOCOMMERCE
+   ======================================== */
+
+/* Metabox container */
+#sps_stackable_settings {
+    border: none !important;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1) !important;
+    border-radius: 8px !important;
+    overflow: hidden !important;
+    margin-bottom: 20px !important;
+}
+
+#sps_stackable_settings .postbox-header {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    border-bottom: none !important;
+}
+
+#sps_stackable_settings .postbox-header h2 {
+    color: white !important;
+    font-weight: 600 !important;
+    padding: 15px 20px !important;
+    margin: 0 !important;
+}
+
+#sps_stackable_settings .inside {
+    padding: 0 !important;
+    margin: 0 !important;
+}
+
+/* Metabox específico - sobrescrever estilos inline */
+.sps-product-meta-box {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif !important;
+    background: #fff !important;
+    border-radius: 0 !important;
+    overflow: hidden !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Header do metabox */
+.sps-meta-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: flex-start !important;
+    padding: 20px !important;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    color: white !important;
+    margin: 0 !important;
+}
+
+.sps-product-info h4 {
+    margin: 0 0 8px 0 !important;
+    font-size: 18px !important;
+    font-weight: 600 !important;
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    color: white !important;
+}
+
+.sps-product-info p {
+    margin: 4px 0 !important;
+    opacity: 0.9 !important;
+    font-size: 14px !important;
+    color: white !important;
+}
+
+.sps-status-indicator {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    padding: 8px 16px !important;
+    border-radius: 20px !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+.sps-status-indicator.active {
+    background: rgba(76, 175, 80, 0.2) !important;
+    border: 1px solid rgba(76, 175, 80, 0.5) !important;
+}
+
+.sps-status-indicator.inactive {
+    background: rgba(244, 67, 54, 0.2) !important;
+    border: 1px solid rgba(244, 67, 54, 0.5) !important;
+}
+
+.sps-status-icon {
+    width: 8px !important;
+    height: 8px !important;
+    border-radius: 50% !important;
+    background: currentColor !important;
+}
+
+/* Content do metabox */
+.sps-meta-content {
+    padding: 24px !important;
+}
+
+.sps-field-group {
+    margin-bottom: 24px !important;
+    padding: 20px !important;
+    background: #f8f9fa !important;
+    border-radius: 8px !important;
+    border-left: 4px solid #667eea !important;
+}
+
+.sps-field-group:last-child {
+    margin-bottom: 0 !important;
+}
+
+.sps-field-label {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-weight: 600 !important;
+    font-size: 14px !important;
+    color: #2c3e50 !important;
+    margin-bottom: 12px !important;
+}
+
+.sps-field-description {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 6px !important;
+    margin: 8px 0 0 0 !important;
+    font-size: 13px !important;
+    color: #6c757d !important;
+    line-height: 1.4 !important;
+}
+
+/* Radio buttons no metabox */
+.sps-meta-content .sps-radio-group {
+    display: flex !important;
+    gap: 12px !important;
+    margin-bottom: 8px !important;
+}
+
+.sps-meta-content .sps-radio-option {
+    display: flex !important;
+    align-items: center !important;
+    cursor: pointer !important;
+    padding: 10px 16px !important;
+    border-radius: 6px !important;
+    transition: all 0.3s ease !important;
+    background: white !important;
+    border: 2px solid #e9ecef !important;
+    min-width: 80px !important;
+    justify-content: center !important;
+    font-weight: 600 !important;
+}
+
+.sps-meta-content .sps-radio-option:hover {
+    border-color: #667eea !important;
+    transform: translateY(-1px) !important;
+    box-shadow: 0 2px 8px rgba(102, 126, 234, 0.15) !important;
+}
+
+.sps-meta-content .sps-radio-option input[type="radio"] {
+    margin: 0 8px 0 0 !important;
+    transform: scale(1.2) !important;
+}
+
+.sps-meta-content .sps-radio-label {
+    font-size: 13px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+.sps-meta-content .sps-radio-yes {
+    color: #28a745 !important;
+}
+
+.sps-meta-content .sps-radio-no {
+    color: #dc3545 !important;
+}
+
+.sps-meta-content .sps-radio-option:has(input[value="1"]:checked) {
+    background: linear-gradient(135deg, #28a745, #20c997) !important;
+    border-color: #28a745 !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(40, 167, 69, 0.3) !important;
+}
+
+.sps-meta-content .sps-radio-option:has(input[value="0"]:checked) {
+    background: linear-gradient(135deg, #dc3545, #fd7e14) !important;
+    border-color: #dc3545 !important;
+    color: white !important;
+    box-shadow: 0 4px 12px rgba(220, 53, 69, 0.3) !important;
+}
+
+.sps-meta-content .sps-radio-option:has(input[type="radio"]:checked) .sps-radio-label {
+    color: white !important;
+}
+
+/* Input fields no metabox */
+.sps-input-wrapper {
+    position: relative !important;
+    display: inline-flex !important;
+    align-items: center !important;
+}
+
+.sps-number-input {
+    padding: 10px 12px !important;
+    border: 2px solid #e9ecef !important;
+    border-radius: 6px !important;
+    font-size: 14px !important;
+    transition: all 0.3s ease !important;
+    background: white !important;
+    width: 120px !important;
+}
+
+.sps-number-input:focus {
+    outline: none !important;
+    border-color: #667eea !important;
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1) !important;
+}
+
+.sps-input-suffix {
+    margin-left: 8px !important;
+    font-size: 12px !important;
+    color: #6c757d !important;
+    font-weight: 600 !important;
+}
+
+/* Dimensions grid */
+.sps-dimensions-grid {
+    display: grid !important;
+    grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+    gap: 16px !important;
+    margin-bottom: 12px !important;
+}
+
+.sps-dimension-field {
+    background: white !important;
+    padding: 16px !important;
+    border-radius: 6px !important;
+    border: 1px solid #e9ecef !important;
+}
+
+.sps-dimension-label {
+    display: flex !important;
+    align-items: center !important;
+    gap: 6px !important;
+    font-weight: 600 !important;
+    font-size: 12px !important;
+    color: #495057 !important;
+    margin-bottom: 8px !important;
+    text-transform: uppercase !important;
+    letter-spacing: 0.5px !important;
+}
+
+/* Preview section */
+.sps-preview-section {
+    background: linear-gradient(135deg, #e3f2fd, #f3e5f5) !important;
+    border-left-color: #2196f3 !important;
+}
+
+.sps-stacking-preview {
+    background: white !important;
+    padding: 16px !important;
+    border-radius: 6px !important;
+    border: 1px solid #e1f5fe !important;
+}
+
+.sps-preview-item {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    padding: 8px 0 !important;
+    border-bottom: 1px solid #f5f5f5 !important;
+}
+
+.sps-preview-item:last-child {
+    border-bottom: none !important;
+}
+
+.sps-preview-label {
+    font-weight: 600 !important;
+    color: #495057 !important;
+}
+
+.sps-preview-value {
+    font-family: monospace !important;
+    background: #f8f9fa !important;
+    padding: 4px 8px !important;
+    border-radius: 4px !important;
+    font-size: 12px !important;
+}
+
+/* Footer do metabox */
+.sps-meta-footer {
+    padding: 16px 24px !important;
+    background: #f8f9fa !important;
+    border-top: 1px solid #e9ecef !important;
+    margin: 0 !important;
+}
+
+.sps-save-notice {
+    display: flex !important;
+    align-items: center !important;
+    gap: 8px !important;
+    font-size: 13px !important;
+    color: #6c757d !important;
+}
+
+/* Animações */
+.sps-stackable-options {
+    transition: all 0.3s ease !important;
+    overflow: hidden !important;
+}
+
+.sps-stackable-options.hiding {
+    opacity: 0 !important;
+    max-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+}
+
+/* Responsividade do metabox */
+@media (max-width: 782px) {
+    .sps-meta-header {
+        flex-direction: column !important;
+        gap: 16px !important;
+    }
+
+    .sps-meta-content .sps-radio-group {
+        flex-direction: column !important;
+        gap: 8px !important;
+    }
+
+    .sps-dimensions-grid {
+        grid-template-columns: 1fr !important;
+    }
 }
 
 /* ========================================

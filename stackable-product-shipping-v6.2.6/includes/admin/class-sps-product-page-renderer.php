@@ -10,7 +10,9 @@ class SPS_Product_Page_Renderer {
     public static function render($products, $saved_configs) {
         ?>
         <div class="wrap sps-products-wrap">
-            <h2><?php _e('Configurar Produtos Empilháveis', 'woocommerce-stackable-shipping'); ?></h2>
+             <div class="sps-header">
+                <h1><?php _e('Configurar Produtos Empilháveis', 'woocommerce-stackable-shipping'); ?></h1>
+            </div>
             
             <div class="sps-admin-header">
                 <div class="sps-admin-description">
@@ -123,7 +125,7 @@ class SPS_Product_Page_Renderer {
                     <table class="widefat fixed striped stackable-products-table">
                         <thead>
                             <tr>
-                                <th width="40" class="sps-checkbox-column"><?php _e('Ativar', 'woocommerce-stackable-shipping'); ?></th>
+                                <th width="80" class="sps-radio-column"><?php _e('Status', 'woocommerce-stackable-shipping'); ?></th>
                                 <th class="sps-product-column"><?php _e('Produto', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('SKU', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('Dimensões (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>
@@ -144,12 +146,25 @@ class SPS_Product_Page_Renderer {
                                 $width_increment = isset($saved_configs[$product_id]['width_increment']) ? $saved_configs[$product_id]['width_increment'] : 0;
                                 ?>
                                 <tr class="sps-product-row <?php echo $is_stackable ? 'is-stackable' : ''; ?>" data-product-id="<?php echo $product_id; ?>">
-                                    <td class="sps-checkbox-column">
-                                        <input type="checkbox" 
-                                               name="stackable_products_config[<?php echo $product_id; ?>][is_stackable]" 
-                                               value="1" 
-                                               class="sps-stackable-toggle"
-                                               <?php checked($is_stackable, true); ?> />
+                                    <td class="sps-radio-column">
+                                        <div class="sps-radio-group">
+                                            <label class="sps-radio-option">
+                                                <input type="radio" 
+                                                       name="stackable_products_config[<?php echo $product_id; ?>][is_stackable]" 
+                                                       value="1" 
+                                                       class="sps-stackable-toggle"
+                                                       <?php checked($is_stackable, true); ?> />
+                                                <span class="sps-radio-label sps-radio-yes">Sim</span>
+                                            </label>
+                                            <label class="sps-radio-option">
+                                                <input type="radio" 
+                                                       name="stackable_products_config[<?php echo $product_id; ?>][is_stackable]" 
+                                                       value="0" 
+                                                       class="sps-stackable-toggle"
+                                                       <?php checked($is_stackable, false); ?> />
+                                                <span class="sps-radio-label sps-radio-no">Não</span>
+                                            </label>
+                                        </div>
                                     </td>
                                     <td class="sps-product-column">
                                         <strong><?php echo esc_html($product_data['name']); ?></strong>
@@ -209,8 +224,8 @@ class SPS_Product_Page_Renderer {
                 </div>
                 
                 <div class="sps-bulk-actions">
-                    <button type="button" class="button" id="sps-toggle-all">Selecionar Todos</button>
-                    <button type="button" class="button" id="sps-untoggle-all">Desmarcar Todos</button>
+                    <button type="button" class="button" id="sps-enable-all">Ativar Todos</button>
+                    <button type="button" class="button" id="sps-disable-all">Desativar Todos</button>
                 </div>
                 
                 <?php submit_button('Salvar Produtos Empilháveis', 'primary', 'submit', true, ['id' => 'sps-save-button']); ?>
@@ -227,195 +242,6 @@ class SPS_Product_Page_Renderer {
      */
     private static function render_styles() {
         ?>
-        <style>
-            .sps-products-wrap {
-                max-width: 100%;
-            }
-            .sps-admin-header {
-                display: flex;
-                justify-content: space-between;
-                margin-bottom: 20px;
-                flex-wrap: wrap;
-            }
-            .sps-admin-description {
-                flex: 2;
-                min-width: 300px;
-                padding-right: 20px;
-            }
-            .sps-admin-actions {
-                flex: 1;
-                min-width: 250px;
-                display: flex;
-                flex-direction: column;
-                gap: 10px;
-            }
-            .sps-export-import-actions {
-                margin-bottom: 10px;
-                display: flex;
-                gap: 10px;
-                flex-wrap: wrap;
-            }
-            .sps-export-import-actions .button {
-                display: inline-flex;
-                align-items: center;
-                gap: 5px;
-            }
-            
-            /* Modal Styles */
-            .sps-modal {
-                position: fixed;
-                z-index: 100000;
-                left: 0;
-                top: 0;
-                width: 100%;
-                height: 100%;
-                background-color: rgba(0,0,0,0.5);
-            }
-            .sps-modal-content {
-                background-color: #fff;
-                margin: 5% auto;
-                padding: 0;
-                border: 1px solid #ccc;
-                border-radius: 4px;
-                width: 80%;
-                max-width: 800px;
-                max-height: 90vh;
-                overflow-y: auto;
-            }
-            .sps-modal-header {
-                padding: 15px 20px;
-                border-bottom: 1px solid #ddd;
-                display: flex;
-                justify-content: space-between;
-                align-items: center;
-                background-color: #f9f9f9;
-            }
-            .sps-modal-header h3 {
-                margin: 0;
-                font-size: 18px;
-            }
-            .sps-modal-close {
-                font-size: 24px;
-                font-weight: bold;
-                cursor: pointer;
-                color: #666;
-            }
-            .sps-modal-close:hover {
-                color: #000;
-            }
-            .sps-modal-body {
-                padding: 20px;
-            }
-            .sps-import-instructions {
-                background: #f8f9fa;
-                border-left: 4px solid #007cba;
-                padding: 15px;
-                margin-bottom: 20px;
-                border-radius: 2px;
-            }
-            .sps-import-instructions h4 {
-                margin-top: 0;
-                display: flex;
-                align-items: center;
-                color: #007cba;
-            }
-            .sps-import-instructions h4 .dashicons {
-                margin-right: 5px;
-            }
-            .sps-import-instructions ul {
-                margin-left: 20px;
-                list-style-type: disc;
-            }
-            .sps-sample-format {
-                margin-top: 15px;
-            }
-            .sps-sample-format h5 {
-                margin-bottom: 10px;
-                color: #333;
-            }
-            .sps-sample-format table {
-                font-size: 12px;
-            }
-            .sps-file-upload {
-                margin-bottom: 20px;
-            }
-            .sps-file-upload label {
-                display: block;
-                margin-bottom: 5px;
-                font-weight: bold;
-            }
-            .sps-file-upload input[type="file"] {
-                width: 100%;
-                padding: 8px;
-                border: 1px solid #ddd;
-                border-radius: 4px;
-            }
-            .sps-modal-actions {
-                text-align: right;
-                padding-top: 15px;
-                border-top: 1px solid #ddd;
-            }
-            .sps-modal-actions .button {
-                margin-left: 10px;
-            }
-            
-            .sps-search-box {
-                position: relative;
-                margin-bottom: 10px;
-            }
-            .sps-search-box .dashicons {
-                position: absolute;
-                left: 8px;
-                top: 50%;
-                transform: translateY(-50%);
-                color: #646970;
-            }
-            .sps-search-box input {
-                padding-left: 30px;
-                width: 100%;
-            }
-            .sps-filter-options {
-                margin-bottom: 15px;
-            }
-            .sps-table-container {
-                overflow-x: auto;
-                margin-bottom: 20px;
-            }
-            .stackable-products-table {
-                table-layout: auto;
-            }
-            .sps-checkbox-column {
-                text-align: center;
-            }
-            .sps-product-column {
-                width: 20%;
-            }
-            .sps-config-input {
-                width: 70px;
-            }
-            .sps-product-row.is-stackable {
-                background-color: #f0f7ff;
-            }
-            .sps-bulk-actions {
-                margin-bottom: 20px;
-            }
-            #sps-save-button {
-                margin-top: 10px;
-            }
-            @media screen and (max-width: 782px) {
-                .sps-admin-header {
-                    flex-direction: column;
-                }
-                .sps-admin-description, .sps-admin-actions {
-                    width: 100%;
-                    padding-right: 0;
-                }
-                .sps-modal-content {
-                    width: 95%;
-                    margin: 2% auto;
-                }
-            }
-        </style>
         <?php
     }
     
@@ -444,10 +270,12 @@ class SPS_Product_Page_Renderer {
                 }
             });
             
-            // Toggle stackable class when checkbox changes
+            // Toggle stackable class when radio button changes
             $('.sps-stackable-toggle').on('change', function() {
                 var row = $(this).closest('tr');
-                if($(this).is(':checked')) {
+                var isStackable = $(this).val() === '1' && $(this).is(':checked');
+                
+                if(isStackable) {
                     row.addClass('is-stackable');
                 } else {
                     row.removeClass('is-stackable');
@@ -455,14 +283,18 @@ class SPS_Product_Page_Renderer {
             });
             
             // Bulk selection actions
-            $('#sps-toggle-all').on('click', function(e) {
+            $('#sps-enable-all').on('click', function(e) {
                 e.preventDefault();
-                $('.stackable-products-table tbody tr:visible .sps-stackable-toggle').prop('checked', true).trigger('change');
+                $('.stackable-products-table tbody tr:visible').each(function() {
+                    $(this).find('input[value="1"]').prop('checked', true).trigger('change');
+                });
             });
             
-            $('#sps-untoggle-all').on('click', function(e) {
+            $('#sps-disable-all').on('click', function(e) {
                 e.preventDefault();
-                $('.stackable-products-table tbody tr:visible .sps-stackable-toggle').prop('checked', false).trigger('change');
+                $('.stackable-products-table tbody tr:visible').each(function() {
+                    $(this).find('input[value="0"]').prop('checked', true).trigger('change');
+                });
             });
             
             // Import modal functionality
