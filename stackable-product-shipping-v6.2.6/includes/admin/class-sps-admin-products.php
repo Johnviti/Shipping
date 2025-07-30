@@ -95,7 +95,10 @@ class SPS_Admin_Products {
         foreach ($_POST['stackable_products_config'] as $product_id => $product_config) {
             $product_id = intval($product_id);
             
-            if (isset($product_config['is_stackable']) && $product_config['is_stackable']) {
+            // Verificar se is_stackable está definido e é verdadeiro
+            $is_stackable = isset($product_config['is_stackable']) && $product_config['is_stackable'] == '1';
+            
+            if ($is_stackable) {
                 $product = wc_get_product($product_id);
                 if (!$product) continue;
                 
@@ -128,24 +131,28 @@ class SPS_Admin_Products {
                 
                 $saved_count++;
             } else {
+                // Remover da base de dados se não está marcado como empilhável
                 if (isset($existing_lookup[$product_id])) {
                     $wpdb->delete($table, ['id' => $existing_lookup[$product_id]], ['%d']);
                 }
             }
         }
         
-        // Save to option for backward compatibility
-        $stackable_config = array_map(function($product_config) {
+        // Save to option for backward compatibility - CORRIGIR AQUI TAMBÉM
+        $stackable_config = array();
+        foreach ($_POST['stackable_products_config'] as $product_id => $product_config) {
+            $is_stackable = isset($product_config['is_stackable']) && $product_config['is_stackable'] == '1';
             $max_quantity = isset($product_config['max_quantity']) ? intval($product_config['max_quantity']) : 0;
-            return array(
-                'is_stackable' => isset($product_config['is_stackable']) ? true : false,
+            
+            $stackable_config[$product_id] = array(
+                'is_stackable' => $is_stackable,
                 'max_stack' => $max_quantity,
                 'height_increment' => isset($product_config['height_increment']) ? floatval($product_config['height_increment']) : 0,
                 'length_increment' => isset($product_config['length_increment']) ? floatval($product_config['length_increment']) : 0,
                 'width_increment' => isset($product_config['width_increment']) ? floatval($product_config['width_increment']) : 0,
                 'max_quantity' => $max_quantity,
             );
-        }, $_POST['stackable_products_config']);
+        }
         
         update_option('sps_stackable_products', $stackable_config);
         

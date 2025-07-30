@@ -114,22 +114,22 @@ class SPS_Admin_Create {
                                     <?php
                                     $count = max(count($group['product_ids']), 1);
                                     for($i=0; $i<$count; $i++): ?>
-                                    <tr class="sps-product-row">
-                                        <td>
-                                            <select name="sps_product_id[]" class="sps-product-select" style="width:100%" required>
-                                                <?php if(! empty($group['product_ids'][$i])): 
-                                                    $p = wc_get_product($group['product_ids'][$i]);
-                                                    echo '<option value="'.esc_attr($group['product_ids'][$i]).'" selected>'.esc_html($p->get_name()).'</option>';
-                                                endif; ?>
-                                            </select>
-                                        </td>
-                                        <td><input type="number" name="sps_product_quantity[]" class="small-text" value="<?php echo esc_attr($group['quantities'][$i] ?? 1); ?>" min="1" required></td>
-                                        <td>
-                                            <?php if($i>0): ?>
-                                                <button type="button" class="button sps-remove-product"><span class="dashicons dashicons-trash"></span></button>
-                                            <?php endif; ?>
-                                        </td>
-                                    </tr>
+                                        <tr class="sps-product-row">
+                                            <td>
+                                                <select name="sps_product_id[]" class="sps-product-select" style="width:100%" required>
+                                                    <?php if(! empty($group['product_ids'][$i])): 
+                                                        $p = wc_get_product($group['product_ids'][$i]);
+                                                        echo '<option value="'.esc_attr($group['product_ids'][$i]).'" selected>'.esc_html($p->get_name()).'</option>';
+                                                    endif; ?>
+                                                </select>
+                                            </td>
+                                            <td><input type="number" name="sps_product_quantity[]" class="small-text" value="<?php echo esc_attr($group['quantities'][$i] ?? 1); ?>" min="1" required></td>
+                                            <td>
+                                                <?php if($i>0): ?>
+                                                    <button type="button" class="button sps-remove-product"><span class="dashicons dashicons-trash"></span></button>
+                                                <?php endif; ?>
+                                            </td>
+                                        </tr>
                                     <?php endfor; ?>
                                 </tbody>
                             </table>
@@ -240,17 +240,23 @@ class SPS_Admin_Create {
             
             // Add product row
             $('#sps-add-product').on('click', function() {
-                var newRow = $('.sps-product-row:first').clone();
-                newRow.find('select').empty().val(null).trigger('change');
-                newRow.find('input[type="number"]').val(1);
-                newRow.find('td:last').html('<button type="button" class="button sps-remove-product"><span class="dashicons dashicons-trash"></span></button>');
+                // Create a new row from scratch instead of cloning to avoid Select2 duplication
+                var newRowHtml = '<tr class="sps-product-row">' +
+                    '<td>' +
+                        '<select name="sps_product_id[]" class="sps-product-select" style="width:100%" required>' +
+                        '</select>' +
+                    '</td>' +
+                    '<td><input type="number" name="sps_product_quantity[]" class="small-text" value="1" min="1" required></td>' +
+                    '<td><button type="button" class="button sps-remove-product"><span class="dashicons dashicons-trash"></span></button></td>' +
+                '</tr>';
+                
+                var newRow = $(newRowHtml);
                 $('#sps-products-table tbody').append(newRow);
                 
-                // Initialize Select2 for the new row with pre-loaded products
+                // Initialize Select2 for the new row
                 newRow.find('.sps-product-select').select2({
-                    data: preloadedProducts, // Add pre-loaded products
+                    data: preloadedProducts,
                     <?php if(!$editing): ?>
-                    // For new groups, load all products
                     ajax: {
                         url: ajaxurl,
                         dataType: 'json',
@@ -283,11 +289,11 @@ class SPS_Admin_Create {
                         data: function(params) {
                             return {
                                 q: params.term,
-                                action: 'sps_search_products',
+                                action: 'sps_search_products'
                             };
                         },
                         processResults: function(data) {
-                            if (data.success) {
+                            if (data.success && data.data) {
                                 return {
                                     results: data.data
                                 };

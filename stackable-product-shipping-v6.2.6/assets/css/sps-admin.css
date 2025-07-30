@@ -270,6 +270,7 @@
 
 .button .dashicons {
     margin-right: 8px;
+    margin-top: 6px;
     font-size: 16px;
 }
 
@@ -618,7 +619,7 @@
 .sps-modal-content {
     background: var(--sps-white);
     margin: 3% auto;
-    padding: 0px 20px;
+    padding: 20px;
     border-radius: 8px;
     width: 90%;
     max-width: 650px;
@@ -653,7 +654,7 @@
 
 .sps-modal-body {
     padding: 25px;
-    max-height: 70vh;
+    /* max-height: 70vh; */
     overflow-y: auto;
 }
 
@@ -681,7 +682,7 @@
 }
 
 .sps-remove-product .dashicons-trash {
-    color: var(--sps-white);
+    color: #b71c1c;
 }
 
 .sps-product-select {
@@ -1188,10 +1189,6 @@
 }
 
 /* Produtos  */
-
-.sps-products-wrap {
-                max-width: 100%;
-            }
             .sps-admin-header {
                 display: flex;
                 justify-content: space-between;
@@ -1384,21 +1381,53 @@
 
 .sps-radio-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
     align-items: center;
+}
+
+ input[type=radio]:checked::before {
+    content: "";
+    border-radius: 50%;
+    width: .5rem;
+    height: .5rem;
+    margin: 0rem !important;
+    background-color: #ffffff;
+    line-height: 1.14285714;
+}
+
+.sps-stackable-toggle input[type=checkbox], input[type=radio] {
+    border: 1px solid #8c8f94;
+    border-radius: 4px;
+    background: #fff;
+    color: #50575e;
+    clear: none;
+    cursor: pointer;
+    display: inline-block;
+    line-height: 0;
+    height: 0.5rem;
+    /* margin: -.25rem .25rem 0 0; */
+    outline: 0;
+    padding: 0 !important;
+    text-align: center;
+    vertical-align: middle;
+    width: 0.5rem;
+    min-width: 0.5rem;
+    -webkit-appearance: none;
+    box-shadow: inset 0 1px 2px rgba(0, 0, 0, .1);
+    transition: .05s border-color ease-in-out;
 }
 
 .sps-radio-option {
     display: flex;
     align-items: center;
     cursor: pointer;
-    padding: 6px 10px;
+    padding: 2px 2px;
     border-radius: 6px;
     transition: var(--sps-transition);
     background: var(--sps-light);
     border: 1px solid var(--sps-border-light);
-    min-width: 60px;
+    min-width: 50px;
     justify-content: center;
 }
 
@@ -1495,23 +1524,11 @@
 
 .sps-radio-group {
     display: flex;
-    flex-direction: column;
+    flex-direction: row;
     gap: 8px;
     align-items: center;
 }
 
-.sps-radio-option {
-    display: flex;
-    align-items: center;
-    cursor: pointer;
-    padding: 6px 10px;
-    border-radius: 6px;
-    transition: var(--sps-transition);
-    background: var(--sps-light);
-    border: 1px solid var(--sps-border-light);
-    min-width: 60px;
-    justify-content: center;
-}
 
 .sps-radio-option:hover {
     background: #e8e9ea;

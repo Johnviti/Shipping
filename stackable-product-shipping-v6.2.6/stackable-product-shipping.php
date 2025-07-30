@@ -177,28 +177,28 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
 });
 
 // Exibe o nome do pacote único
-add_filter('woocommerce_shipping_package_name', function($package_name, $i, $package) {
-    if (isset($package['sps_single_package']) && $package['sps_single_package']) {
-        $group_count = count($package['sps_group_items'] ?? []);
-        $individual_count = count($package['sps_individual_items'] ?? []);
+// add_filter('woocommerce_shipping_package_name', function($package_name, $i, $package) {
+//     if (isset($package['sps_single_package']) && $package['sps_single_package']) {
+//         $group_count = count($package['sps_group_items'] ?? []);
+//         $individual_count = count($package['sps_individual_items'] ?? []);
         
-        if ($group_count > 0 && $individual_count > 0) {
-            return "Pacote Único ({$group_count} grupos + {$individual_count} itens avulsos)";
-        } elseif ($group_count > 0) {
-            return "Pacote Único ({$group_count} grupos)";
-        } elseif ($individual_count > 0) {
-            return "Pacote Único ({$individual_count} itens avulsos)";
-        } else {
-            return "Pacote Único";
-        }
-    }
+//         if ($group_count > 0 && $individual_count > 0) {
+//             return "Pacote Único ({$group_count} grupos + {$individual_count} itens avulsos)";
+//         } elseif ($group_count > 0) {
+//             return "Pacote Único ({$group_count} grupos)";
+//         } elseif ($individual_count > 0) {
+//             return "Pacote Único ({$individual_count} itens avulsos)";
+//         } else {
+//             return "Pacote Único";
+//         }
+//     }
     
-    if (isset($package['sps_pacote'])) {
-        return esc_html($package['sps_pacote']);
-    }
+//     if (isset($package['sps_pacote'])) {
+//         return esc_html($package['sps_pacote']);
+//     }
     
-    return $package_name;
-}, 10, 3);
+//     return $package_name;
+// }, 10, 3);
 
 // Salva a informação do pacote único no pedido
 add_action('woocommerce_checkout_create_order', function($order, $data) {
