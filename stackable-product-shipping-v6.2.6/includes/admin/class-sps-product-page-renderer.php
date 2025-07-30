@@ -125,7 +125,7 @@ class SPS_Product_Page_Renderer {
                     <table class="widefat fixed striped stackable-products-table">
                         <thead>
                             <tr>
-                                <th width="80" class="sps-radio-column"><?php _e('Status', 'woocommerce-stackable-shipping'); ?></th>
+                                <th width="130" class="sps-radio-column"><?php _e('Ativo', 'woocommerce-stackable-shipping'); ?></th>
                                 <th class="sps-product-column"><?php _e('Produto', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('SKU', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('Dimensões (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>

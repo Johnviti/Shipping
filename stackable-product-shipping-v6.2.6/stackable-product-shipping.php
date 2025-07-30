@@ -68,7 +68,7 @@ function sps_enqueue_frontend_scripts() {
     ));
 }
 
-// Filtro para alterar os pacotes de frete do WooCommerce
+// Filtro para alterar os pacotes de frete do WooCommerce - SISTEMA DE PACOTE ÚNICO
 add_filter('woocommerce_cart_shipping_packages', function($packages) {
     if (is_admin() && !defined('DOING_AJAX')) return $packages;
     if (!class_exists('SPS_Shipping_Matcher')) return $packages;
@@ -89,160 +89,155 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
 
     $result = SPS_Shipping_Matcher::match_cart_with_groups($cart_items);
     
-    // Check if result is valid
-    if (!is_array($result) || !isset($result['packages']) || !isset($result['avulsos'])) {
-        error_log('SPS: Invalid result structure from match_cart_with_groups');
+    // Verifica se o resultado é válido para o novo sistema
+    if (!is_array($result) || !isset($result['single_package'])) {
+        error_log('SPS: Resultado inválido do novo sistema de pacote único');
         return $packages;
     }
     
-    $matched_groups = $result['packages'];
-    $avulsos = $result['avulsos'];
-    
-    error_log('Grupos: ' . print_r($matched_groups, true));
-    error_log('Avulsos: ' . print_r($avulsos, true));
+    error_log('SPS: Pacote único calculado - Peso: ' . $result['total_weight'] . 'kg, Dimensões: ' . 
+              $result['total_height'] . 'x' . $result['total_width'] . 'x' . $result['total_length'] . 'cm');
 
-    $new_packages = [];
-    $count = 1;
+    // Cria o conteúdo do pacote único
+    $contents = [];
+    $total_cost = 0;
 
-    // Process matched groups
-    foreach ($matched_groups as $group_pkg) {
-        $products = $group_pkg['products'];
-        $group = $group_pkg['group'];
-
-        $altura = (isset($group['height']) && floatval($group['height']) > 0) ? floatval($group['height']) : floatval($group['stacking_ratio']);
-        $largura = (isset($group['width']) && floatval($group['width']) > 0) ? floatval($group['width']) : floatval($group['stacking_ratio']);
-        $comprimento = (isset($group['length']) && floatval($group['length']) > 0) ? floatval($group['length']) : floatval($group['stacking_ratio']);
-        $peso = floatval($group['weight']);
-
-        $contents = [];
-
-        foreach ($products as $pid => $qtd_pacote) {
-            foreach ($cart as $cart_item_key => $item) {
-                if ($item['product_id'] == $pid && $qtd_pacote > 0) {
-                    $item_clone = $item;
-                    $item_clone['quantity'] = $qtd_pacote;
-
+    // Adiciona itens de grupos ao pacote
+    foreach ($result['group_items'] as $group_item) {
+        $group = $group_item['group'];
+        $quantity = $group_item['quantity'];
+        
+        foreach ($group['products'] as $product_id => $product_qty) {
+            $total_qty_needed = $product_qty * $quantity;
+            
+            // Encontra o item no carrinho
+            foreach ($cart as $cart_item_key => $cart_item) {
+                if ($cart_item['product_id'] == $product_id) {
+                    $item_clone = $cart_item;
+                    $item_clone['quantity'] = $total_qty_needed;
+                    
+                    // Define as dimensões do grupo no produto
                     if (is_object($item_clone['data'])) {
-                        $item_clone['data']->set_weight($peso);
-                        $item_clone['data']->set_length($comprimento);
-                        $item_clone['data']->set_width($largura);
-                        $item_clone['data']->set_height($altura);
+                        $item_clone['data']->set_weight($result['total_weight']);
+                        $item_clone['data']->set_height($result['total_height']);
+                        $item_clone['data']->set_width($result['total_width']);
+                        $item_clone['data']->set_length($result['total_length']);
                     }
-
-                    $contents[$cart_item_key . '_p' . $count] = $item_clone;
+                    
+                    $contents[$cart_item_key . '_group_' . $group['id']] = $item_clone;
+                    $total_cost += isset($item_clone['line_total']) ? $item_clone['line_total'] : 0;
                     break;
                 }
             }
         }
-
-        $new_packages[] = [
-            'contents'        => $contents,
-            'contents_cost'   => array_sum(array_map(function($i){return isset($i['line_total']) ? $i['line_total'] : 0;}, $contents)),
-            'applied_coupons' => WC()->cart->get_applied_coupons(),
-            'user'            => ['ID' => get_current_user_id()],
-            'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-            'sps_group'       => $group,
-            'sps_pacote'      => "Pacote {$count}",
-            'package_weight'  => $peso,
-            'package_height'  => $altura,
-            'package_length'  => $comprimento,
-            'package_width'   => $largura,
-        ];
-        $count++;
     }
 
-    // Process avulsos (individual items)
-    if (!empty($avulsos)) {
-        $contents = [];
-        $peso_total = 0;
-        $altura = $largura = $comprimento = 0;
-
-        foreach ($avulsos as $item) {
-            // Find the cart item by product_id
-            $cart_item_key = null;
-            foreach ($cart as $key => $cart_item) {
-                if ($cart_item['product_id'] == $item['product_id']) {
-                    $cart_item_key = $key;
-                    break;
+    // Adiciona itens individuais ao pacote
+    foreach ($result['individual_items'] as $product_id => $quantity) {
+        // Encontra o item no carrinho
+        foreach ($cart as $cart_item_key => $cart_item) {
+            if ($cart_item['product_id'] == $product_id) {
+                $item_clone = $cart_item;
+                $item_clone['quantity'] = $quantity;
+                
+                // Define as dimensões do pacote único no produto
+                if (is_object($item_clone['data'])) {
+                    $item_clone['data']->set_weight($result['total_weight']);
+                    $item_clone['data']->set_height($result['total_height']);
+                    $item_clone['data']->set_width($result['total_width']);
+                    $item_clone['data']->set_length($result['total_length']);
                 }
+                
+                $contents[$cart_item_key . '_individual'] = $item_clone;
+                $total_cost += isset($item_clone['line_total']) ? $item_clone['line_total'] : 0;
+                break;
             }
-            
-            if (!$cart_item_key) {
-                error_log("SPS: Could not find cart item for product ID {$item['product_id']}");
-                continue;
-            }
-            
-            $item_clone = $cart[$cart_item_key];
-            $item_clone['quantity'] = $item['quantity'];
-
-            // Use dimensions from the matcher if available, otherwise use product data
-            $item_height = isset($item['height']) ? $item['height'] : 0;
-            $item_width = isset($item['width']) ? $item['width'] : 0;
-            $item_length = isset($item['length']) ? $item['length'] : 0;
-            $item_weight = isset($item['weight']) ? $item['weight'] : 0;
-
-            if (is_object($item_clone['data'])) {
-                if (!$item_weight) $item_weight = $item_clone['data']->get_weight() ?: 1;
-                if (!$item_length) $item_length = $item_clone['data']->get_length() ?: 10;
-                if (!$item_width) $item_width = $item_clone['data']->get_width() ?: 10;
-                if (!$item_height) $item_height = $item_clone['data']->get_height() ?: 10;
-
-                $item_clone['data']->set_weight($item_weight);
-                $item_clone['data']->set_length($item_length);
-                $item_clone['data']->set_width($item_width);
-                $item_clone['data']->set_height($item_height);
-
-                $peso_total += floatval($item_weight) * intval($item['quantity']);
-                $altura = max($altura, floatval($item_height));
-                $largura = max($largura, floatval($item_width));
-                $comprimento = max($comprimento, floatval($item_length));
-            }
-
-            $contents[$cart_item_key . '_avulso'] = $item_clone;
-        }
-
-        if (!empty($contents)) {
-            $new_packages[] = [
-                'contents'        => $contents,
-                'contents_cost'   => array_sum(array_map(function($i){return isset($i['line_total']) ? $i['line_total'] : 0;}, $contents)),
-                'applied_coupons' => WC()->cart->get_applied_coupons(),
-                'user'            => ['ID' => get_current_user_id()],
-                'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-                'sps_group'       => false,
-                'sps_pacote'      => "Avulso",
-                'package_weight'  => $peso_total,
-                'package_height'  => $altura,
-                'package_length'  => $comprimento,
-                'package_width'   => $largura,
-            ];
         }
     }
 
-    return !empty($new_packages) ? $new_packages : $packages;
+    // Cria o pacote único
+    $single_package = [
+        'contents'        => $contents,
+        'contents_cost'   => $total_cost,
+        'applied_coupons' => WC()->cart->get_applied_coupons(),
+        'user'            => ['ID' => get_current_user_id()],
+        'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+        'sps_single_package' => true,
+        'sps_pacote'      => "Pacote Único",
+        'package_weight'  => $result['total_weight'],
+        'package_height'  => $result['total_height'],
+        'package_length'  => $result['total_length'],
+        'package_width'   => $result['total_width'],
+        'sps_group_items' => $result['group_items'],
+        'sps_individual_items' => $result['individual_items'],
+        'sps_items_detail' => $result['items'],
+    ];
+
+    return [$single_package];
 });
 
-// Exibe o nome do pacote agrupado ou "Avulso" no checkout/carrinho
+// Exibe o nome do pacote único
 add_filter('woocommerce_shipping_package_name', function($package_name, $i, $package) {
+    if (isset($package['sps_single_package']) && $package['sps_single_package']) {
+        $group_count = count($package['sps_group_items'] ?? []);
+        $individual_count = count($package['sps_individual_items'] ?? []);
+        
+        if ($group_count > 0 && $individual_count > 0) {
+            return "Pacote Único ({$group_count} grupos + {$individual_count} itens avulsos)";
+        } elseif ($group_count > 0) {
+            return "Pacote Único ({$group_count} grupos)";
+        } elseif ($individual_count > 0) {
+            return "Pacote Único ({$individual_count} itens avulsos)";
+        } else {
+            return "Pacote Único";
+        }
+    }
+    
     if (isset($package['sps_pacote'])) {
         return esc_html($package['sps_pacote']);
     }
+    
     return $package_name;
 }, 10, 3);
 
-// Salva a informação dos pacotes no pedido
+// Salva a informação do pacote único no pedido
 add_action('woocommerce_checkout_create_order', function($order, $data) {
     $packages = WC()->shipping()->get_packages();
-    $pacotes_info = [];
-    foreach ($packages as $pkg) {
-        if (!empty($pkg['sps_group'])) {
-            $pacotes_info[] = [
-                'pacote' => $pkg['sps_pacote'],
-                'grupo'  => $pkg['sps_group']['name'],
-                'produtos' => $pkg['sps_group']['product_ids'],
+    
+    foreach ($packages as $package) {
+        if (isset($package['sps_single_package']) && $package['sps_single_package']) {
+            $package_info = [
+                'tipo' => 'pacote_unico',
+                'peso_total' => $package['package_weight'],
+                'altura_total' => $package['package_height'],
+                'largura_total' => $package['package_width'],
+                'comprimento_total' => $package['package_length'],
+                'grupos' => [],
+                'itens_avulsos' => [],
             ];
+            
+            // Adiciona informações dos grupos
+            foreach ($package['sps_group_items'] ?? [] as $group_item) {
+                $package_info['grupos'][] = [
+                    'id' => $group_item['group']['id'],
+                    'nome' => $group_item['group']['name'],
+                    'quantidade' => $group_item['quantity'],
+                    'produtos' => $group_item['group']['product_ids'],
+                ];
+            }
+            
+            // Adiciona informações dos itens avulsos
+            foreach ($package['sps_individual_items'] ?? [] as $product_id => $quantity) {
+                $product = wc_get_product($product_id);
+                $package_info['itens_avulsos'][] = [
+                    'produto_id' => $product_id,
+                    'nome' => $product ? $product->get_name() : "Produto #{$product_id}",
+                    'quantidade' => $quantity,
+                ];
+            }
+            
+            $order->update_meta_data('_sps_pacote_unico_info', wp_json_encode($package_info));
+            break; // Só deve haver um pacote único
         }
-    }
-    if ($pacotes_info) {
-        $order->update_meta_data('_sps_pacotes_info', wp_json_encode($pacotes_info));
     }
 }, 10, 2);
