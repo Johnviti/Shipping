@@ -199,9 +199,9 @@ class SPS_Product_Page_Renderer {
                                 <th><?php _e('SKU', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('Dimensões (LxCxA)', 'woocommerce-stackable-shipping'); ?></th>
                                 <th><?php _e('Quantidade Máxima', 'woocommerce-stackable-shipping'); ?></th>
-                                <th><?php _e('Incremento de Altura (cm)', 'woocommerce-stackable-shipping'); ?></th>
-                                <th><?php _e('Incremento de Comprimento (cm)', 'woocommerce-stackable-shipping');?></th>
-                                <th><?php _e('Incremento de Largura (cm)', 'woocommerce-stackable-shipping');?></th>
+                                <th><?php _e('Incremento de Altura (cm) por unidade', 'woocommerce-stackable-shipping'); ?></th>
+                                <th><?php _e('Incremento de Comprimento (cm) por unidade', 'woocommerce-stackable-shipping');?></th>
+                                <th><?php _e('Incremento de Largura (cm) por unidade', 'woocommerce-stackable-shipping');?></th>
                             </tr>
                         </thead>
                         <tbody>

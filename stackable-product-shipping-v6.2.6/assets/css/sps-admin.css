@@ -168,6 +168,7 @@
     background: var(--sps-white);
     border-radius: var(--sps-radius);
     margin-bottom: 25px;
+    padding: 25px;
 }
 
 .sps-form-row {
