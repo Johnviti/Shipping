@@ -253,18 +253,18 @@
 }
 
 #cdp-edit-dimensions {
-    background: #007cba;
+    background: #83b735;
     color: white;
     border: none;
-    padding: 8px 16px;
-    border-radius: 4px;
-    font-size: 14px;
+    padding: 8px 12px;
+    border-radius: 0px;
+    font-size: 13px;
     cursor: pointer;
     transition: background 0.3s ease;
 }
 
 #cdp-edit-dimensions:hover {
-    background: #005a87;
+    background: #74a32f;
 }
 
 /* Botão de adicionar ao carrinho */

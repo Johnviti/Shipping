@@ -36,6 +36,11 @@ class CDP_Cart {
         // AJAX para atualizar dimensões no carrinho
         add_action('wp_ajax_cdp_update_cart_dimensions', array($this, 'ajax_update_cart_dimensions'));
         add_action('wp_ajax_nopriv_cdp_update_cart_dimensions', array($this, 'ajax_update_cart_dimensions'));
+        add_action('wp_ajax_cdp_get_product_data', array($this, 'ajax_get_product_data'));
+        add_action('wp_ajax_nopriv_cdp_get_product_data', array($this, 'ajax_get_product_data'));
+        
+        // Adicionar botão de editar no carrinho
+        add_filter('woocommerce_cart_item_name', array($this, 'add_edit_button_to_cart_item'), 10, 3);
     }
     
     /**
@@ -290,61 +295,7 @@ class CDP_Cart {
         return $item_data;
     }
     
-    /**
-     * AJAX para atualizar dimensões no carrinho
-     */
-    public function ajax_update_cart_dimensions() {
-        if (!wp_verify_nonce($_POST['nonce'], 'cdp_update_cart_dimensions')) {
-            wp_send_json_error(__('Erro de segurança', 'stackable-product-shipping'));
-        }
-        
-        $cart_key = sanitize_text_field($_POST['cart_key']);
-        $width = floatval($_POST['width']);
-        $height = floatval($_POST['height']);
-        $length = floatval($_POST['length']);
-        
-        $cart = WC()->cart;
-        $cart_item = $cart->get_cart_item($cart_key);
-        
-        if (!$cart_item) {
-            wp_send_json_error(__('Item não encontrado no carrinho', 'stackable-product-shipping'));
-        }
-        
-        // Validar dimensões
-        $product_data = $this->get_product_dimension_data($cart_item['product_id']);
-        
-        if (!$product_data || 
-            $width < $product_data->base_width || $width > $product_data->max_width ||
-            $height < $product_data->base_height || $height > $product_data->max_height ||
-            $length < $product_data->base_length || $length > $product_data->max_length) {
-            
-            wp_send_json_error(__('Dimensões fora dos limites permitidos', 'stackable-product-shipping'));
-        }
-        
-        // Atualizar dimensões
-        $cart_item['cdp_custom_dimensions']['width'] = $width;
-        $cart_item['cdp_custom_dimensions']['height'] = $height;
-        $cart_item['cdp_custom_dimensions']['length'] = $length;
-        
-        $cart->cart_contents[$cart_key] = $cart_item;
-        $cart->set_session();
-        
-        // Calcular novo preço
-        $new_price = $this->calculate_custom_price(
-            $cart_item['cdp_custom_dimensions']['base_price'],
-            $width, $height, $length,
-            $cart_item['cdp_custom_dimensions']['base_width'],
-            $cart_item['cdp_custom_dimensions']['base_height'],
-            $cart_item['cdp_custom_dimensions']['base_length'],
-            $cart_item['cdp_custom_dimensions']['price_per_cm']
-        );
-        
-        wp_send_json_success(array(
-            'price' => $new_price,
-            'formatted_price' => wc_price($new_price),
-            'message' => __('Dimensões atualizadas com sucesso!', 'stackable-product-shipping')
-        ));
-    }
+
     
     /**
      * Adicionar metadados ao item do pedido
@@ -404,5 +355,123 @@ class CDP_Cart {
         $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
         
         return $base_price + $price_increase;
+    }
+
+    
+    /**
+     * Adicionar botão de editar dimensões no carrinho
+     */
+    public function add_edit_button_to_cart_item($product_name, $cart_item, $cart_item_key) {
+        // Verificar se o item tem dimensões personalizadas
+        if (isset($cart_item['cdp_custom_dimensions'])) {
+            $product_id = $cart_item['product_id'];
+            
+            $edit_button = sprintf(
+                '<br><a href="#" class="cdp-edit-cart-dimensions" data-cart-key="%s" data-product-id="%d">%s</a>',
+                esc_attr($cart_item_key),
+                esc_attr($product_id),
+                __('Editar Dimensões', 'stackable-product-shipping')
+            );
+            
+            $product_name .= $edit_button;
+        }
+        
+        return $product_name;
+    }
+    
+    /**
+     * AJAX: Obter dados do produto
+     */
+    public function ajax_get_product_data() {
+        // Verificar nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'cdp_nonce')) {
+            wp_die(__('Erro de segurança', 'stackable-product-shipping'));
+        }
+        
+        $product_id = intval($_POST['product_id']);
+        $product_data = $this->get_product_dimension_data($product_id);
+        
+        if ($product_data && $product_data->enabled) {
+            wp_send_json_success(array(
+                'base_width' => floatval($product_data->base_width),
+                'base_height' => floatval($product_data->base_height),
+                'base_length' => floatval($product_data->base_length),
+                'max_width' => floatval($product_data->max_width),
+                'max_height' => floatval($product_data->max_height),
+                'max_length' => floatval($product_data->max_length),
+                'base_price' => floatval($product_data->base_price),
+                'price_per_cm' => floatval($product_data->price_per_cm)
+            ));
+        } else {
+            wp_send_json_error(__('Produto não encontrado ou não configurado para dimensões personalizadas', 'stackable-product-shipping'));
+        }
+    }
+    
+    /**
+     * AJAX: Atualizar dimensões no carrinho
+     */
+    public function ajax_update_cart_dimensions() {
+        // Verificar nonce
+        if (!wp_verify_nonce($_POST['nonce'], 'cdp_nonce')) {
+            wp_die(__('Erro de segurança', 'stackable-product-shipping'));
+        }
+        
+        $cart_key = sanitize_text_field($_POST['cart_key']);
+        $width = floatval($_POST['width']);
+        $height = floatval($_POST['height']);
+        $length = floatval($_POST['length']);
+        
+        // Obter carrinho
+        $cart = WC()->cart;
+        $cart_item = $cart->get_cart_item($cart_key);
+        
+        if (!$cart_item) {
+            wp_send_json_error(__('Item não encontrado no carrinho', 'stackable-product-shipping'));
+        }
+        
+        // Obter dados do produto
+        $product_id = $cart_item['product_id'];
+        $product_data = $this->get_product_dimension_data($product_id);
+        
+        if (!$product_data || !$product_data->enabled) {
+            wp_send_json_error(__('Produto não configurado para dimensões personalizadas', 'stackable-product-shipping'));
+        }
+        
+        // Validar dimensões
+        if ($width < $product_data->base_width || $width > $product_data->max_width ||
+            $height < $product_data->base_height || $height > $product_data->max_height ||
+            $length < $product_data->base_length || $length > $product_data->max_length) {
+            wp_send_json_error(__('Dimensões fora dos limites permitidos', 'stackable-product-shipping'));
+        }
+        
+        // Calcular novo preço
+        $new_price = $this->calculate_custom_price(
+            $product_data->base_price,
+            $width,
+            $height,
+            $length,
+            $product_data->base_width,
+            $product_data->base_height,
+            $product_data->base_length,
+            $product_data->price_per_cm
+        );
+        
+        // Atualizar dimensões no carrinho
+        $cart->cart_contents[$cart_key]['cdp_custom_dimensions'] = array(
+            'width' => $width,
+            'height' => $height,
+            'length' => $length,
+            'base_price' => $product_data->base_price,
+            'price_per_cm' => $product_data->price_per_cm,
+            'custom_price' => $new_price
+        );
+        
+        // Salvar carrinho
+        $cart->set_session();
+        
+        wp_send_json_success(array(
+            'message' => __('Dimensões atualizadas com sucesso', 'stackable-product-shipping'),
+            'new_price' => $new_price
+        ));
     }
 }

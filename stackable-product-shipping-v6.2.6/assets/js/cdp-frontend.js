@@ -65,7 +65,7 @@ jQuery(document).ready(function($) {
             </div>
         `;
         
-        $dimensionSelector.after(confirmButton);
+        $('.cdp-price-display').after(confirmButton);
         
         // Event listener para confirmação
         $('#cdp-confirm-dimensions').on('click', confirmDimensions);
@@ -79,7 +79,12 @@ jQuery(document).ready(function($) {
      */
     function onDimensionChange() {
         currentDimensions.confirmed = false;
+        
+        // Remover container de dimensões confirmadas se existir
+        $('.cdp-dimension-summary').remove();
+        
         updateConfirmationStatus();
+        updateAddToCartButton(false);
         
         clearTimeout(calculateTimeout);
         calculateTimeout = setTimeout(calculatePrice, 300);
@@ -114,11 +119,13 @@ jQuery(document).ready(function($) {
         
         if (currentDimensions.confirmed) {
             $confirmButton.prop('disabled', true).text('Dimensões Confirmadas ✓');
-            $status.html(`
-                <span class="cdp-status-icon">✅</span>
-                <span class="cdp-status-text">Dimensões confirmadas! Você pode adicionar ao carrinho.</span>
-            `);
-            $status.addClass('confirmed');
+            // Remover o elemento de status de confirmação
+            $('#cdp-confirmation-status').remove();
+            // $status.html(`
+            //     <span class="cdp-status-icon">✅</span>
+            //     <span class="cdp-status-text">Dimensões confirmadas! Você pode adicionar ao carrinho.</span>
+            // `);
+            // $status.addClass('confirmed');
         } else {
             const isValid = validateDimensions(false);
             $confirmButton.prop('disabled', !isValid);
@@ -144,6 +151,10 @@ jQuery(document).ready(function($) {
      * Mostrar resumo das dimensões
      */
     function showDimensionSummary() {
+        // Remover qualquer resumo existente antes de criar um novo
+        $('.cdp-dimension-summary').remove();
+        
+        const pluginUrl = cdp_ajax.pluginUrl || '';
         const summary = `
             <div class="cdp-dimension-summary">
                 <h4>Dimensões Confirmadas:</h4>
@@ -370,6 +381,227 @@ jQuery(document).ready(function($) {
         $errorMessage.hide();
     }
     
+    // Adicionar modal para editar dimensões no carrinho
+    function addCartEditModal() {
+        const modalHtml = `
+            <div id="cdp-cart-edit-modal" class="cdp-modal" style="display: none;">
+                <div class="cdp-modal-content">
+                    <div class="cdp-modal-header">
+                        <h3>Editar Dimensões</h3>
+                        <span class="cdp-modal-close">&times;</span>
+                    </div>
+                    <div class="cdp-modal-body">
+                        <div class="cdp-dimension-field">
+                            <label for="cdp-cart-width">Largura (cm):</label>
+                            <input type="number" id="cdp-cart-width" step="0.01" min="0">
+                            <div class="cdp-dimension-limits"></div>
+                        </div>
+                        <div class="cdp-dimension-field">
+                            <label for="cdp-cart-height">Altura (cm):</label>
+                            <input type="number" id="cdp-cart-height" step="0.01" min="0">
+                            <div class="cdp-dimension-limits"></div>
+                        </div>
+                        <div class="cdp-dimension-field">
+                            <label for="cdp-cart-length">Comprimento (cm):</label>
+                            <input type="number" id="cdp-cart-length" step="0.01" min="0">
+                            <div class="cdp-dimension-limits"></div>
+                        </div>
+                        <div class="cdp-modal-price">
+                            <strong>Novo Preço: <span id="cdp-modal-price">-</span></strong>
+                        </div>
+                        <div class="cdp-modal-error" style="display: none;"></div>
+                    </div>
+                    <div class="cdp-modal-footer">
+                        <button type="button" class="button" id="cdp-modal-cancel">Cancelar</button>
+                        <button type="button" class="button button-primary" id="cdp-modal-save">Salvar Alterações</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        $('body').append(modalHtml);
+        
+        // Event listeners do modal
+        $('.cdp-modal-close, #cdp-modal-cancel').on('click', closeCartEditModal);
+        $('#cdp-modal-save').on('click', saveCartDimensions);
+        
+        // Fechar modal clicando fora
+        $('#cdp-cart-edit-modal').on('click', function(e) {
+            if (e.target === this) {
+                closeCartEditModal();
+            }
+        });
+        
+        // Event listeners para inputs
+        $('#cdp-cart-width, #cdp-cart-height, #cdp-cart-length').on('input', calculateModalPrice);
+    }
+    
+    // Abrir modal de edição no carrinho
+    function openCartEditModal(cartKey, productId, currentDimensions) {
+        // Buscar dados do produto
+        $.ajax({
+            url: cdp_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'cdp_get_product_data',
+                nonce: cdp_ajax.nonce,
+                product_id: productId
+            },
+            success: function(response) {
+                if (response.success) {
+                    const productData = response.data;
+                    
+                    // Configurar inputs
+                    $('#cdp-cart-width').attr('min', productData.base_width).attr('max', productData.max_width).val(currentDimensions.width);
+                    $('#cdp-cart-height').attr('min', productData.base_height).attr('max', productData.max_height).val(currentDimensions.height);
+                    $('#cdp-cart-length').attr('min', productData.base_length).attr('max', productData.max_length).val(currentDimensions.length);
+                    
+                    // Mostrar limites
+                    $('#cdp-cart-width').siblings('.cdp-dimension-limits').text(`Min: ${productData.base_width} | Max: ${productData.max_width}`);
+                    $('#cdp-cart-height').siblings('.cdp-dimension-limits').text(`Min: ${productData.base_height} | Max: ${productData.max_height}`);
+                    $('#cdp-cart-length').siblings('.cdp-dimension-limits').text(`Min: ${productData.base_length} | Max: ${productData.max_length}`);
+                    
+                    // Armazenar dados para uso posterior
+                    $('#cdp-cart-edit-modal').data('cart-key', cartKey).data('product-data', productData);
+                    
+                    // Calcular preço inicial
+                    calculateModalPrice();
+                    
+                    // Mostrar modal
+                    $('#cdp-cart-edit-modal').show();
+                }
+            }
+        });
+    }
+    
+    // Fechar modal
+    function closeCartEditModal() {
+        $('#cdp-cart-edit-modal').hide();
+        $('.cdp-modal-error').hide();
+        $('#cdp-cart-width, #cdp-cart-height, #cdp-cart-length').removeClass('error');
+    }
+    
+    // Calcular preço no modal
+    function calculateModalPrice() {
+        const width = parseFloat($('#cdp-cart-width').val()) || 0;
+        const height = parseFloat($('#cdp-cart-height').val()) || 0;
+        const length = parseFloat($('#cdp-cart-length').val()) || 0;
+        const productData = $('#cdp-cart-edit-modal').data('product-data');
+        
+        if (!productData) return;
+        
+        // Validar dimensões
+        let isValid = true;
+        if (width < productData.base_width || width > productData.max_width) {
+            $('#cdp-cart-width').addClass('error');
+            isValid = false;
+        } else {
+            $('#cdp-cart-width').removeClass('error');
+        }
+        
+        if (height < productData.base_height || height > productData.max_height) {
+            $('#cdp-cart-height').addClass('error');
+            isValid = false;
+        } else {
+            $('#cdp-cart-height').removeClass('error');
+        }
+        
+        if (length < productData.base_length || length > productData.max_length) {
+            $('#cdp-cart-length').addClass('error');
+            isValid = false;
+        } else {
+            $('#cdp-cart-length').removeClass('error');
+        }
+        
+        if (isValid) {
+            // Calcular novo preço
+            const widthDiff = Math.max(0, width - productData.base_width);
+            const heightDiff = Math.max(0, height - productData.base_height);
+            const lengthDiff = Math.max(0, length - productData.base_length);
+            const totalDiffCm = widthDiff + heightDiff + lengthDiff;
+            const priceIncrease = (productData.base_price * productData.price_per_cm / 100) * totalDiffCm;
+            const newPrice = productData.base_price + priceIncrease;
+            
+            const formattedPrice = new Intl.NumberFormat('pt-BR', {
+                style: 'currency',
+                currency: 'BRL'
+            }).format(newPrice);
+            
+            $('#cdp-modal-price').text(formattedPrice);
+            $('#cdp-modal-save').prop('disabled', false);
+        } else {
+            $('#cdp-modal-price').text('Dimensões inválidas');
+            $('#cdp-modal-save').prop('disabled', true);
+        }
+    }
+    
+    // Salvar dimensões do carrinho
+    function saveCartDimensions() {
+        const cartKey = $('#cdp-cart-edit-modal').data('cart-key');
+        const width = parseFloat($('#cdp-cart-width').val());
+        const height = parseFloat($('#cdp-cart-height').val());
+        const length = parseFloat($('#cdp-cart-length').val());
+        
+        $('#cdp-modal-save').prop('disabled', true).text('Salvando...');
+        
+        $.ajax({
+            url: cdp_ajax.ajax_url,
+            type: 'POST',
+            data: {
+                action: 'cdp_update_cart_dimensions',
+                nonce: cdp_ajax.nonce,
+                cart_key: cartKey,
+                width: width,
+                height: height,
+                length: length
+            },
+            success: function(response) {
+                if (response.success) {
+                    // Fechar modal
+                    closeCartEditModal();
+                    
+                    // Recarregar página do carrinho para atualizar tudo
+                    window.location.reload();
+                } else {
+                    $('.cdp-modal-error').text(response.data || 'Erro ao atualizar dimensões').show();
+                }
+            },
+            error: function() {
+                $('.cdp-modal-error').text('Erro de conexão').show();
+            },
+            complete: function() {
+                $('#cdp-modal-save').prop('disabled', false).text('Salvar Alterações');
+            }
+        });
+    }
+    
+    // Event listener para botões de editar no carrinho
+    $(document).on('click', '.cdp-edit-cart-dimensions', function(e) {
+        e.preventDefault();
+        
+        const cartKey = $(this).data('cart-key');
+        const productId = $(this).data('product-id');
+        
+        // Extrair dimensões atuais do texto exibido
+        const dimensionText = $(this).closest('tr').find('.wc-item-meta').text();
+        const matches = dimensionText.match(/([\d,]+)\s*x\s*([\d,]+)\s*x\s*([\d,]+)/);
+        
+        if (matches) {
+            const currentDimensions = {
+                width: parseFloat(matches[1].replace(',', '.')),
+                height: parseFloat(matches[2].replace(',', '.')),
+                length: parseFloat(matches[3].replace(',', '.'))
+            };
+            
+            openCartEditModal(cartKey, productId, currentDimensions);
+        }
+    });
+    
+    // Inicializar modal quando a página carregar
+    if ($('body').hasClass('woocommerce-cart')) {
+        addCartEditModal();
+    }
+    
     // Adicionar estilos CSS
     $('<style>').prop('type', 'text/css').html(`
         .cdp-dimension-field input.error {
@@ -380,9 +612,9 @@ jQuery(document).ready(function($) {
         .cdp-confirmation-section {
             margin: 20px 0;
             padding: 15px;
-            border: 2px solid #ddd;
+            border: none;
             border-radius: 5px;
-            background: #f9f9f9;
+            background: none !important;
         }
         
         .cdp-confirmation-status {
@@ -424,6 +656,119 @@ jQuery(document).ready(function($) {
         .single_add_to_cart_button.disabled {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+        
+        /* Estilos do Modal */
+        .cdp-modal {
+            position: fixed;
+            z-index: 9999;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0,0,0,0.5);
+        }
+        
+        .cdp-modal-content {
+            background-color: #fefefe;
+            margin: 5% auto;
+            border: none;
+            border-radius: 8px;
+            width: 90%;
+            max-width: 500px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.3);
+        }
+        
+        .cdp-modal-header {
+            padding: 20px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .cdp-modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+        
+        .cdp-modal-close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+        
+        .cdp-modal-close:hover {
+            color: #000;
+        }
+        
+        .cdp-modal-body {
+            padding: 20px;
+        }
+        
+        .cdp-dimension-field {
+            margin-bottom: 15px;
+        }
+        
+        .cdp-dimension-field label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .cdp-dimension-field input {
+            width: 100%;
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .cdp-dimension-limits {
+            font-size: 12px;
+            color: #666;
+            margin-top: 3px;
+        }
+        
+        .cdp-modal-price {
+            margin: 20px 0;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 4px;
+            text-align: center;
+            font-size: 16px;
+        }
+        
+        .cdp-modal-error {
+            margin: 10px 0;
+            padding: 10px;
+            background: #f8d7da;
+            color: #721c24;
+            border: 1px solid #f5c6cb;
+            border-radius: 4px;
+        }
+        
+        .cdp-modal-footer {
+            padding: 20px;
+            border-top: 1px solid #eee;
+            text-align: right;
+        }
+        
+        .cdp-modal-footer .button {
+            margin-left: 10px;
+        }
+        
+        .cdp-edit-cart-dimensions {
+            color: #0073aa;
+            text-decoration: none;
+            font-size: 12px;
+        }
+        
+        .cdp-edit-cart-dimensions:hover {
+            text-decoration: underline;
         }
     `).appendTo('head');
 });
