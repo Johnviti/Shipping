@@ -165,7 +165,10 @@ class CDP_Frontend {
             
             <div class="cdp-dimensions-grid">
                 <div class="cdp-dimension-field">
-                    <label for="cdp_custom_width"><?php _e('Largura (cm)', 'stackable-product-shipping'); ?></label>
+                    <div class="cdp-dimension-header">
+                        <img src="<?php echo SPS_PLUGIN_URL; ?>assets/img/Largura.jpg" alt="<?php _e('Largura', 'stackable-product-shipping'); ?>" class="cdp-dimension-image">
+                        <label for="cdp_custom_width"><?php _e('Largura (cm)', 'stackable-product-shipping'); ?></label>
+                    </div>
                     <input type="number" 
                            id="cdp_custom_width" 
                            name="cdp_custom_width" 
@@ -182,7 +185,10 @@ class CDP_Frontend {
                 </div>
                 
                 <div class="cdp-dimension-field">
-                    <label for="cdp_custom_height"><?php _e('Altura (cm)', 'stackable-product-shipping'); ?></label>
+                    <div class="cdp-dimension-header">
+                        <img src="<?php echo SPS_PLUGIN_URL; ?>assets/img/Altura.jpg" alt="<?php _e('Altura', 'stackable-product-shipping'); ?>" class="cdp-dimension-image">
+                        <label for="cdp_custom_height"><?php _e('Altura (cm)', 'stackable-product-shipping'); ?></label>
+                    </div>
                     <input type="number" 
                            id="cdp_custom_height" 
                            name="cdp_custom_height" 
@@ -199,7 +205,10 @@ class CDP_Frontend {
                 </div>
                 
                 <div class="cdp-dimension-field">
-                    <label for="cdp_custom_length"><?php _e('Comprimento (cm)', 'stackable-product-shipping'); ?></label>
+                    <div class="cdp-dimension-header">
+                        <img src="<?php echo SPS_PLUGIN_URL; ?>assets/img/Comprimento.jpg" alt="<?php _e('Comprimento', 'stackable-product-shipping'); ?>" class="cdp-dimension-image">
+                        <label for="cdp_custom_length"><?php _e('Comprimento (cm)', 'stackable-product-shipping'); ?></label>
+                    </div>
                     <input type="number" 
                            id="cdp_custom_length" 
                            name="cdp_custom_length" 
@@ -395,6 +404,7 @@ class CDP_Frontend {
             wp_localize_script('cdp-frontend-js', 'cdp_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('cdp_calculate_price'),
+                'pluginUrl' => SPS_PLUGIN_URL,
                 'messages' => array(
                     'calculating' => __('Calculando...', 'stackable-product-shipping'),
                     'error' => __('Erro ao calcular preço', 'stackable-product-shipping')
