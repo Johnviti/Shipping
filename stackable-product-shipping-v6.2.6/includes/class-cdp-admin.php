@@ -108,7 +108,7 @@ class CDP_Admin {
         $max_height = $data ? $data->max_height : '';
         $max_length = $data ? $data->max_length : '';
         $price_per_cm = $data ? $data->price_per_cm : '';
-        $density_per_cm3 = $data ? $data->density_per_cm3 : 0;
+
         $max_weight = $data ? $data->max_weight : '';
         
         wp_nonce_field('cdp_save_product_meta', 'cdp_meta_nonce');
@@ -277,7 +277,7 @@ class CDP_Admin {
                 <div class="cdp-info">
                     <strong><?php _e('Cálculo Automático:', 'stackable-product-shipping'); ?></strong><br>
                     <?php _e('• O preço será calculado automaticamente baseado no valor por cm configurado globalmente', 'stackable-product-shipping'); ?><br>
-                    <?php _e('• O peso será calculado automaticamente baseado na densidade do material configurada globalmente', 'stackable-product-shipping'); ?><br>
+                    <?php _e('• O peso será calculado automaticamente baseado na proporção do volume personalizado', 'stackable-product-shipping'); ?><br>
                     <?php _e('• Os valores são aplicados apenas para as dimensões extras selecionadas pelo cliente', 'stackable-product-shipping'); ?>
                 </div>
             </div>
@@ -350,7 +350,6 @@ class CDP_Admin {
         // Obter valores das configurações globais
         $max_weight = 0; // Não usado mais - peso será calculado automaticamente
         $price_per_cm = get_option('cdp_price_per_cm', 0.50);
-        $density_per_cm3 = get_option('cdp_density_per_cm3', 600);
         
         // Validações
         if ($enabled) {
@@ -390,10 +389,9 @@ class CDP_Admin {
                     'max_length' => $max_length,
                     'max_weight' => $max_weight,
                     'price_per_cm' => $price_per_cm,
-                    'density_per_cm3' => $density_per_cm3,
                 ),
                 array('product_id' => $post_id),
-                array('%d', '%f', '%f', '%f', '%f', '%f', '%f'),
+                array('%d', '%f', '%f', '%f', '%f', '%f'),
                 array('%d')
             );
         } else {
@@ -408,9 +406,8 @@ class CDP_Admin {
                     'max_length' => $max_length,
                     'max_weight' => $max_weight,
                     'price_per_cm' => $price_per_cm,
-                    'density_per_cm3' => $density_per_cm3,
                 ),
-                array('%d', '%d', '%f', '%f', '%f', '%f', '%f', '%f')
+                array('%d', '%d', '%f', '%f', '%f', '%f', '%f')
             );
         }
         
@@ -443,18 +440,18 @@ class CDP_Admin {
     }
 
     /**
-     * Calcular peso baseado nas dimensões personalizadas
+     * Calcular peso baseado nas dimensões personalizadas usando fator multiplicativo
      */
     public static function calculate_custom_weight($product_id, $custom_width, $custom_height, $custom_length) {
         global $wpdb;
         
         $table_name = $wpdb->prefix . 'cdp_product_dimensions';
         $data = $wpdb->get_row($wpdb->prepare(
-            "SELECT max_width, max_height, max_length, max_weight, density_per_cm3 FROM $table_name WHERE product_id = %d AND enabled = 1",
+            "SELECT max_width, max_height, max_length, max_weight FROM $table_name WHERE product_id = %d AND enabled = 1",
             $product_id
         ));
         
-        if (!$data || $data->density_per_cm3 <= 0) {
+        if (!$data) {
             return false;
         }
         
@@ -476,15 +473,15 @@ class CDP_Admin {
         // Calcular volumes
         $base_volume = $base_width * $base_height * $base_length;
         $custom_volume = $custom_width * $custom_height * $custom_length;
-        $volume_difference = $custom_volume - $base_volume;
         
-        // Se o volume diminuiu ou não mudou, retornar peso base
-        if ($volume_difference <= 0) {
+        // Evitar divisão por zero
+        if ($base_volume <= 0) {
             return $base_weight;
         }
         
-        // Calcular peso total baseado no volume personalizado usando densidade
-        $new_weight = $custom_volume * $data->density_per_cm3;
+        // Calcular peso usando fator multiplicativo baseado no volume
+        $fator = $custom_volume / $base_volume;
+        $new_weight = $base_weight * $fator;
         
         // Verificar se não excede o peso máximo (se definido)
         if ($data->max_weight > 0 && $new_weight > $data->max_weight) {
@@ -539,7 +536,6 @@ class CDP_Admin {
         
         // Obter valores das configurações globais
         $data->price_per_cm = get_option('cdp_price_per_cm', 0.50);
-        $data->density_per_cm3 = get_option('cdp_density_per_cm3', 600);
         $data->max_weight = 0; // Não usado mais
         
         return $data;

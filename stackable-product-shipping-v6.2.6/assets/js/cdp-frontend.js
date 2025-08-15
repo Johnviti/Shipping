@@ -268,34 +268,19 @@ jQuery(document).ready(function($) {
      * Calcular preço localmente
      */
     function calculateLocalPrice(width, height, length) {
-        // Verificar método de cálculo
-        const calculationMethod = cdp_ajax.calculation_method || 'linear';
+        // Cálculo baseado em fator de volume
+        const volumeOriginal = baseWidth * baseHeight * baseLength;
+        const volumeNovo = width * height * length;
         
-        if (calculationMethod === 'volume') {
-            // Cálculo baseado em fator de volume
-            const volumeOriginal = baseWidth * baseHeight * baseLength;
-            const volumeNovo = width * height * length;
-            
-            // Evitar divisão por zero
-            if (volumeOriginal <= 0) {
-                return basePrice;
-            }
-            
-            const fator = volumeNovo / volumeOriginal;
-            const precoNovo = basePrice * fator;
-            
-            return precoNovo;
-        } else {
-            // Cálculo linear (padrão)
-            const widthDiff = Math.max(0, width - baseWidth);
-            const heightDiff = Math.max(0, height - baseHeight);
-            const lengthDiff = Math.max(0, length - baseLength);
-            
-            const totalDiffCm = widthDiff + heightDiff + lengthDiff;
-            const priceIncrease = pricePerCm * totalDiffCm;
-            
-            return basePrice + priceIncrease;
+        // Evitar divisão por zero
+        if (volumeOriginal <= 0) {
+            return basePrice;
         }
+        
+        const fator = volumeNovo / volumeOriginal;
+        const precoNovo = basePrice * fator;
+        
+        return precoNovo;
     }
     
     /**

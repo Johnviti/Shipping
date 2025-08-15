@@ -435,7 +435,6 @@ class CDP_Cart {
                     'max_length' => $table_data->max_length,
                     'max_weight' => $table_data->max_weight,
                     'price_per_cm' => $table_data->price_per_cm,
-                    'density_per_cm3' => $table_data->density_per_cm3,
                     'enabled' => (bool) $table_data->enabled
                 );
             } else {
@@ -449,36 +448,21 @@ class CDP_Cart {
     }
     
     /**
-     * Calcular preço personalizado
+     * Calcular preço personalizado baseado no volume
      */
     public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        // Verificar método de cálculo
-        $calculation_method = get_option('cdp_calculation_method', 'linear');
+        // Cálculo baseado em fator de volume
+        $volume_original = $base_width * $base_height * $base_length;
+        $volume_novo = $width * $height * $length;
         
-        if ($calculation_method === 'volume') {
-            // Cálculo baseado em fator de volume
-            $volume_original = $base_width * $base_height * $base_length;
-            $volume_novo = $width * $height * $length;
-            
-            // Evitar divisão por zero
-            if ($volume_original <= 0) {
-                return $base_price;
-            }
-            
-            $fator = $volume_novo / $volume_original;
-            $preco_novo = $base_price * $fator;
-            
-            return $preco_novo;
-        } else {
-            // Cálculo linear (padrão)
-            $width_diff = max(0, $width - $base_width);
-            $height_diff = max(0, $height - $base_height);
-            $length_diff = max(0, $length - $base_length);
-            
-            $total_diff_cm = $width_diff + $height_diff + $length_diff;
-            $price_increase = $price_per_cm * $total_diff_cm;
-            
-            return $base_price + $price_increase;
+        // Evitar divisão por zero
+        if ($volume_original <= 0) {
+            return $base_price;
         }
+        
+        $fator = $volume_novo / $volume_original;
+        $preco_novo = $base_price * $fator;
+        
+        return $preco_novo;
     }
 }

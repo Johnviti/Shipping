@@ -6,7 +6,7 @@ jQuery(document).ready(function($) {
     const $dimensionFields = $('.cdp-field-group:not(:first)');
     const $maxDimensionInputs = $('#cdp_max_width, #cdp_max_height, #cdp_max_length');
     const $pricePerCmInput = $('#cdp_price_per_cm');
-    const $densityInput = $('#cdp_density_per_cm3');
+
     
     // Inicializar
     toggleDimensionFields();
@@ -15,7 +15,7 @@ jQuery(document).ready(function($) {
     $enabledCheckbox.on('change', toggleDimensionFields);
     $maxDimensionInputs.on('input', validateMaxDimensions);
     $pricePerCmInput.on('input', validatePricePerCm);
-    $densityInput.on('input', validateDensity);
+
     
     /**
      * Alternar visibilidade dos campos de dimensão
@@ -63,20 +63,7 @@ jQuery(document).ready(function($) {
         }
     }
     
-    /**
-     * Validar densidade por cm³
-     */
-    function validateDensity() {
-        const value = parseFloat($densityInput.val()) || 0;
-        
-        if (value < 0) {
-            $densityInput.addClass('error');
-            showFieldError($densityInput, 'Valor não pode ser negativo');
-        } else {
-            $densityInput.removeClass('error');
-            hideFieldError($densityInput);
-        }
-    }
+
     
     /**
      * Mostrar erro no campo

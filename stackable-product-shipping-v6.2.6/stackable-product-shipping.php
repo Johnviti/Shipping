@@ -326,8 +326,7 @@ class SPS_Main {
                     'max_height' => $table_data->max_height,
                     'max_length' => $table_data->max_length,
                     'max_weight' => $table_data->max_weight,
-                    'price_per_cm' => $table_data->price_per_cm,
-                    'density_per_cm3' => $table_data->density_per_cm3
+                    'price_per_cm' => $table_data->price_per_cm
                 );
             } else {
                 $data = null;
@@ -340,37 +339,22 @@ class SPS_Main {
     }
     
     /**
-     * Calcular preço personalizado (método estático para uso geral)
+     * Calcular preço personalizado baseado no volume (método estático para uso geral)
      */
     public static function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        // Obter método de cálculo configurado
-        $calculation_method = get_option('cdp_calculation_method', 'linear');
+        // Cálculo baseado em fator de volume
+        $volume_original = $base_width * $base_height * $base_length;
+        $volume_novo = $width * $height * $length;
         
-        if ($calculation_method === 'volume') {
-            // Cálculo baseado em fator de volume
-            $volume_original = $base_width * $base_height * $base_length;
-            $volume_novo = $width * $height * $length;
-            
-            // Evitar divisão por zero
-            if ($volume_original <= 0) {
-                return $base_price;
-            }
-            
-            $fator = $volume_novo / $volume_original;
-            $preco_novo = $base_price * $fator;
-            
-            return $preco_novo;
-        } else {
-            // Cálculo linear (padrão)
-            $width_diff = max(0, $width - $base_width);
-            $height_diff = max(0, $height - $base_height);
-            $length_diff = max(0, $length - $base_length);
-            
-            $total_diff_cm = $width_diff + $height_diff + $length_diff;
-            $price_increase = $price_per_cm * $total_diff_cm;
-            
-            return $base_price + $price_increase;
+        // Evitar divisão por zero
+        if ($volume_original <= 0) {
+            return $base_price;
         }
+        
+        $fator = $volume_novo / $volume_original;
+        $preco_novo = $base_price * $fator;
+        
+        return $preco_novo;
     }
 }
 
@@ -616,13 +600,19 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
             if ($extra_width > 0 || $extra_height > 0 || $extra_length > 0) {
                 $has_custom_dimensions = true;
                 
-                // Obter densidade para calcular peso extra
-                $dimensions_config = CDP_Admin::get_product_custom_dimensions($product_id);
-                $density_per_cm3 = isset($dimensions_config->density_per_cm3) ? (float) $dimensions_config->density_per_cm3 : 0;
+                // Calcular peso usando fator multiplicativo baseado no volume
+                $base_weight = (float) $product->get_weight();
+                $base_volume = $base_width * $base_height * $base_length;
+                $custom_volume = (float) $custom_data['width'] * (float) $custom_data['height'] * (float) $custom_data['length'];
                 
-                // Calcular volume extra e peso extra
-                $extra_volume = $extra_width * $extra_height * $extra_length;
-                $extra_weight = $extra_volume * $density_per_cm3 / 1000; // converter gramas para kg
+                // Evitar divisão por zero e calcular peso proporcional
+                if ($base_volume > 0 && $base_weight > 0) {
+                    $fator = $custom_volume / $base_volume;
+                    $custom_weight = $base_weight * $fator;
+                    $extra_weight = max(0, $custom_weight - $base_weight);
+                } else {
+                    $extra_weight = 0;
+                }
                 
                 $custom_dimensions_data[] = [
                     'cart_item_key' => $cart_item_key,
