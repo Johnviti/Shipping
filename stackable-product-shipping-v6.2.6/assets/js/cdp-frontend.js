@@ -262,7 +262,15 @@ jQuery(document).ready(function($) {
                 showLoading(false);
                 
                 if (response.success) {
-                    updatePriceDisplay(response.data.price);
+                    // Passar dados de peso se disponíveis
+                    const weightData = response.data.weight ? {
+                        weight: response.data.weight,
+                        base_weight: response.data.base_weight,
+                        weight_difference: response.data.weight_difference,
+                        formatted_weight: response.data.formatted_weight
+                    } : null;
+                    
+                    updatePriceDisplay(response.data.price, weightData);
                     updateConfirmationStatus();
                 } else {
                     showError(response.data || cdp_ajax.messages.error);
@@ -284,7 +292,11 @@ jQuery(document).ready(function($) {
         const lengthDiff = Math.max(0, length - baseLength);
         
         const totalDiffCm = widthDiff + heightDiff + lengthDiff;
-        const priceIncrease = (basePrice * pricePerCm / 100) * totalDiffCm;
+        
+        // Calcular preço adicional baseado na proporção preço/dimensão do produto base
+        const baseTotalDimensions = baseWidth + baseHeight + baseLength;
+        const pricePerCm = (basePrice / baseTotalDimensions) * 0.01; // 1% da proporção base
+        const priceIncrease = pricePerCm * totalDiffCm;
         
         return basePrice + priceIncrease;
     }
@@ -343,7 +355,7 @@ jQuery(document).ready(function($) {
     /**
      * Atualizar exibição do preço
      */
-    function updatePriceDisplay(price) {
+    function updatePriceDisplay(price, weightData = null) {
         const formattedPrice = new Intl.NumberFormat('pt-BR', {
             style: 'currency',
             currency: 'BRL'
@@ -353,6 +365,33 @@ jQuery(document).ready(function($) {
         
         // Atualizar preço principal do WooCommerce
         $('.woocommerce-Price-amount').first().html(formattedPrice);
+        
+        // Atualizar informações de peso se disponíveis
+        if (weightData) {
+            updateWeightDisplay(weightData);
+        }
+    }
+    
+    /**
+     * Atualizar exibição do peso
+     */
+    function updateWeightDisplay(weightData) {
+        // Procurar por elemento de peso existente ou criar um novo
+        let $weightDisplay = $('.cdp-weight-info');
+        
+        if ($weightDisplay.length === 0) {
+            // Criar elemento de peso se não existir
+            $weightDisplay = $('<div class="cdp-weight-info" style="margin-top: 10px; font-size: 14px; color: #666;"></div>');
+            $priceDisplay.after($weightDisplay);
+        }
+        
+        let weightText = 'Peso: ' + weightData.formatted_weight;
+        
+        if (weightData.weight_difference > 0) {
+            weightText += ' (+' + weightData.weight_difference.toFixed(3) + ' kg)';
+        }
+        
+        $weightDisplay.html(weightText);
     }
     
     /**
@@ -444,7 +483,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'cdp_get_product_data',
-                nonce: cdp_ajax.nonce,
+                nonce: cdp_ajax.cart_nonce,
                 product_id: productId
             },
             success: function(response) {
@@ -519,7 +558,10 @@ jQuery(document).ready(function($) {
             const heightDiff = Math.max(0, height - productData.base_height);
             const lengthDiff = Math.max(0, length - productData.base_length);
             const totalDiffCm = widthDiff + heightDiff + lengthDiff;
-            const priceIncrease = (productData.base_price * productData.price_per_cm / 100) * totalDiffCm;
+            // Calcular preço adicional baseado na proporção preço/dimensão do produto base
+            const baseTotalDimensions = productData.base_width + productData.base_height + productData.base_length;
+            const pricePerCm = (productData.base_price / baseTotalDimensions) * 0.01; // 1% da proporção base
+            const priceIncrease = pricePerCm * totalDiffCm;
             const newPrice = productData.base_price + priceIncrease;
             
             const formattedPrice = new Intl.NumberFormat('pt-BR', {
@@ -549,7 +591,7 @@ jQuery(document).ready(function($) {
             type: 'POST',
             data: {
                 action: 'cdp_update_cart_dimensions',
-                nonce: cdp_ajax.nonce,
+                nonce: cdp_ajax.cart_nonce,
                 cart_key: cartKey,
                 width: width,
                 height: height,
@@ -557,8 +599,20 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
+                    // Mostrar mensagem de sucesso com detalhes
+                    let message = response.data.message;
+                    if (response.data.new_weight && response.data.weight_difference) {
+                        message += '\n\nNovo peso: ' + response.data.new_weight.toFixed(3) + ' kg';
+                        if (response.data.weight_difference > 0) {
+                            message += ' (+' + response.data.weight_difference.toFixed(3) + ' kg)';
+                        }
+                    }
+                    
                     // Fechar modal
                     closeCartEditModal();
+                    
+                    // Mostrar alerta com informações
+                    alert(message);
                     
                     // Recarregar página do carrinho para atualizar tudo
                     window.location.reload();
@@ -582,9 +636,21 @@ jQuery(document).ready(function($) {
         const cartKey = $(this).data('cart-key');
         const productId = $(this).data('product-id');
         
+        console.log('Botão editar clicado:', { cartKey, productId });
+        
+        // Verificar se o modal existe
+        if ($('#cdp-cart-edit-modal').length === 0) {
+            console.log('Modal não encontrado, criando...');
+            addCartEditModal();
+        }
+        
         // Extrair dimensões atuais do texto exibido
-        const dimensionText = $(this).closest('tr').find('.wc-item-meta').text();
-        const matches = dimensionText.match(/([\d,]+)\s*x\s*([\d,]+)\s*x\s*([\d,]+)/);
+        const $cartItem = $(this).closest('tr');
+        const dimensionText = $cartItem.find('.wc-item-meta').text();
+        console.log('Texto das dimensões:', dimensionText);
+        
+        // Regex mais flexível para capturar dimensões
+        const matches = dimensionText.match(/([\d,\.]+)\s*x\s*([\d,\.]+)\s*x\s*([\d,\.]+)/);
         
         if (matches) {
             const currentDimensions = {
@@ -593,6 +659,16 @@ jQuery(document).ready(function($) {
                 length: parseFloat(matches[3].replace(',', '.'))
             };
             
+            console.log('Dimensões extraídas:', currentDimensions);
+            openCartEditModal(cartKey, productId, currentDimensions);
+        } else {
+            console.log('Não foi possível extrair dimensões do texto');
+            // Tentar com dimensões padrão
+            const currentDimensions = {
+                width: 0,
+                height: 0,
+                length: 0
+            };
             openCartEditModal(cartKey, productId, currentDimensions);
         }
     });

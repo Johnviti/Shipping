@@ -246,66 +246,6 @@ class CDP_Admin {
                     </div>
                 </div>
             </div>
-            
-            <div class="cdp-field-group">
-                <h4><?php _e('Configuração de Peso', 'stackable-product-shipping'); ?></h4>
-                <p class="cdp-help-text"><?php _e('Configure como o peso será calculado baseado no volume adicional das dimensões personalizadas.', 'stackable-product-shipping'); ?></p>
-                
-                <div class="cdp-field-row">
-                    <div class="cdp-field">
-                        <label for="cdp_weight_per_cm3"><?php _e('Peso por cm³ adicional (kg)', 'stackable-product-shipping'); ?></label>
-                        <input type="number" id="cdp_weight_per_cm3" name="cdp_weight_per_cm3" value="<?php echo esc_attr($weight_per_cm3); ?>" step="0.00001" min="0">
-                        <div class="cdp-help-text"><?php _e('Ex: 0.001 = 1g por cm³ adicional de volume', 'stackable-product-shipping'); ?></div>
-                    </div>
-                    <div class="cdp-field">
-                        <label for="cdp_max_weight"><?php _e('Peso Máximo (kg)', 'stackable-product-shipping'); ?></label>
-                        <input type="number" id="cdp_max_weight" name="cdp_max_weight" value="<?php echo esc_attr($max_weight); ?>" step="0.001" min="<?php echo esc_attr($wc_weight ?: 0); ?>">
-                        <?php if ($wc_weight): ?>
-                        <div class="cdp-help-text"><?php echo sprintf(__('Mínimo: %s kg (peso base)', 'stackable-product-shipping'), number_format($wc_weight, 3, ',', '.')); ?></div>
-                        <?php endif; ?>
-                    </div>
-                </div>
-                
-                <?php if ($wc_width && $wc_height && $wc_length && $weight_per_cm3): ?>
-                <div class="cdp-info">
-                    <strong><?php _e('Exemplo de Cálculo:', 'stackable-product-shipping'); ?></strong><br>
-                    <?php 
-                    $base_volume = $wc_width * $wc_height * $wc_length;
-                    $example_width = $wc_width + 10;
-                    $example_height = $wc_height + 5;
-                    $example_length = $wc_length + 8;
-                    $new_volume = $example_width * $example_height * $example_length;
-                    $volume_diff = $new_volume - $base_volume;
-                    $weight_addition = $volume_diff * $weight_per_cm3;
-                    $new_weight = $wc_weight + $weight_addition;
-                    
-                    echo sprintf(
-                        __('Se o cliente escolher %s×%s×%s cm (+%s cm³), o peso será: %s kg + %s kg = %s kg', 'stackable-product-shipping'),
-                        number_format($example_width, 1, ',', '.'),
-                        number_format($example_height, 1, ',', '.'),
-                        number_format($example_length, 1, ',', '.'),
-                        number_format($volume_diff, 0, ',', '.'),
-                        number_format($wc_weight, 3, ',', '.'),
-                        number_format($weight_addition, 3, ',', '.'),
-                        number_format($new_weight, 3, ',', '.')
-                    );
-                    ?>
-                </div>
-                <?php endif; ?>
-            </div>
-            
-            <div class="cdp-field-group">
-                <h4><?php _e('Configuração de Preço', 'stackable-product-shipping'); ?></h4>
-                <p class="cdp-help-text"><?php _e('Percentual de acréscimo por centímetro adicional em relação às dimensões base.', 'stackable-product-shipping'); ?></p>
-                
-                <div class="cdp-field-row">
-                    <div class="cdp-field">
-                        <label for="cdp_price_per_cm"><?php _e('Acréscimo por cm (% do preço base)', 'stackable-product-shipping'); ?></label>
-                        <input type="number" id="cdp_price_per_cm" name="cdp_price_per_cm" value="<?php echo esc_attr($price_per_cm); ?>" step="0.0001" min="0" max="100">
-                        <div class="cdp-help-text"><?php _e('Ex: 0.5 = 0.5% do preço base por cm adicional', 'stackable-product-shipping'); ?></div>
-                    </div>
-                </div>
-            </div>
         </div>
         <?php
     }
@@ -375,8 +315,16 @@ class CDP_Admin {
         $max_height = floatval($_POST['cdp_max_height'] ?? 0);
         $max_length = floatval($_POST['cdp_max_length'] ?? 0);
         $max_weight = floatval($_POST['cdp_max_weight'] ?? 0);
-        $price_per_cm = floatval($_POST['cdp_price_per_cm'] ?? 0);
-        $weight_per_cm3 = floatval($_POST['cdp_weight_per_cm3'] ?? 0);
+        
+        // Calcular valores baseados nas proporções do produto
+        $base_total_dimensions = $base_width + $base_height + $base_length;
+        $base_volume = $base_width * $base_height * $base_length;
+        
+        // Preço: 1% da proporção preço/dimensão total
+        $price_per_cm = $base_total_dimensions > 0 ? ($product->get_price() / $base_total_dimensions) * 0.01 : 0;
+        
+        // Peso: densidade do produto (peso/volume)
+        $weight_per_cm3 = $base_volume > 0 ? ($base_weight / $base_volume) : 0;
         
         // Validações
         if ($enabled) {
@@ -404,21 +352,7 @@ class CDP_Admin {
                 return;
             }
             
-            // Verificar se o preço por cm é válido
-            if ($price_per_cm < 0 || $price_per_cm > 100) {
-                add_action('admin_notices', function() {
-                    echo '<div class="notice notice-error"><p>' . __('Erro: O acréscimo por cm deve estar entre 0% e 100%.', 'stackable-product-shipping') . '</p></div>';
-                });
-                return;
-            }
-            
-            // Verificar se o peso por cm³ é válido
-            if ($weight_per_cm3 < 0) {
-                add_action('admin_notices', function() {
-                    echo '<div class="notice notice-error"><p>' . __('Erro: O peso por cm³ deve ser um valor positivo.', 'stackable-product-shipping') . '</p></div>';
-                });
-                return;
-            }
+            // Valores de preço e peso são fixos automáticos, não precisam validação
         }
         
         // Verificar se já existe registro
@@ -428,15 +362,11 @@ class CDP_Admin {
         ));
         
         if ($existing) {
-            // Atualizar
+            // Atualizar (não salvar mais dimensões base, apenas máximas)
             $wpdb->update(
                 $table_name,
                 array(
                     'enabled' => $enabled,
-                    'base_width' => $base_width,
-                    'base_height' => $base_height,
-                    'base_length' => $base_length,
-                    'base_weight' => $base_weight,
                     'max_width' => $max_width,
                     'max_height' => $max_height,
                     'max_length' => $max_length,
@@ -445,20 +375,16 @@ class CDP_Admin {
                     'weight_per_cm3' => $weight_per_cm3,
                 ),
                 array('product_id' => $post_id),
-                array('%d', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f'),
+                array('%d', '%f', '%f', '%f', '%f', '%f', '%f'),
                 array('%d')
             );
         } else {
-            // Inserir
+            // Inserir (não salvar mais dimensões base, apenas máximas)
             $wpdb->insert(
                 $table_name,
                 array(
                     'product_id' => $post_id,
                     'enabled' => $enabled,
-                    'base_width' => $base_width,
-                    'base_height' => $base_height,
-                    'base_length' => $base_length,
-                    'base_weight' => $base_weight,
                     'max_width' => $max_width,
                     'max_height' => $max_height,
                     'max_length' => $max_length,
@@ -466,12 +392,12 @@ class CDP_Admin {
                     'price_per_cm' => $price_per_cm,
                     'weight_per_cm3' => $weight_per_cm3,
                 ),
-                array('%d', '%d', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f')
+                array('%d', '%d', '%f', '%f', '%f', '%f', '%f', '%f')
             );
         }
         
         // Limpar cache
-        wp_cache_delete('cdp_product_' . $post_id, 'cdp_products');
+        wp_cache_delete('cdp_product_table_' . $post_id, 'cdp_products');
         
         // Mensagem de sucesso
         if ($enabled) {
@@ -532,8 +458,9 @@ class CDP_Admin {
             return $base_weight;
         }
         
-        // Calcular peso adicional baseado no volume extra
-        $weight_addition = $volume_difference * $data->weight_per_cm3;
+        // Calcular peso adicional baseado na proporção peso/volume do produto base
+        $weight_per_cm3 = $base_weight / $base_volume; // densidade do produto
+        $weight_addition = $volume_difference * $weight_per_cm3;
         $new_weight = $base_weight + $weight_addition;
         
         // Verificar se não excede o peso máximo (se definido)

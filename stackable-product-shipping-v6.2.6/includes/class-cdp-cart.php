@@ -40,7 +40,7 @@ class CDP_Cart {
         add_action('wp_ajax_nopriv_cdp_get_product_data', array($this, 'ajax_get_product_data'));
         
         // Adicionar botão de editar no carrinho
-        add_filter('woocommerce_cart_item_name', array($this, 'add_edit_button_to_cart_item'), 10, 3);
+        // add_filter('woocommerce_cart_item_name', array($this, 'add_edit_button_to_cart_item'), 10, 3);
     }
     
     /**
@@ -93,9 +93,13 @@ class CDP_Cart {
                 $height = floatval($_POST['cdp_custom_height']);
                 $length = floatval($_POST['cdp_custom_length']);
                 
-                // Obter preço base do produto
+                // Obter preço e peso base do produto
                 $product = wc_get_product($product_id);
                 $base_price = $product ? $product->get_price() : 0;
+                $base_weight = $product ? floatval($product->get_weight()) : 0;
+                
+                // Calcular peso personalizado
+                $custom_weight = CDP_Admin::calculate_custom_weight($product_id, $width, $height, $length);
                 
                 $cart_item_data['cdp_custom_dimensions'] = array(
                     'width' => $width,
@@ -106,6 +110,8 @@ class CDP_Cart {
                     'base_length' => $product_data->base_length,
                     'price_per_cm' => $product_data->price_per_cm,
                     'base_price' => $base_price,
+                    'base_weight' => $base_weight,
+                    'custom_weight' => $custom_weight !== false ? $custom_weight : $base_weight,
                     'confirmed' => true,
                     'timestamp' => time()
                 );
@@ -221,7 +227,9 @@ class CDP_Cart {
             if (isset($cart_item['cdp_custom_dimensions'])) {
                 $product = $cart_item['data'];
                 $dimensions = $cart_item['cdp_custom_dimensions'];
+                $product_id = $cart_item['product_id'];
                 
+                // Calcular novo preço
                 $new_price = $this->calculate_custom_price(
                     $dimensions['base_price'],
                     $dimensions['width'],
@@ -233,7 +241,19 @@ class CDP_Cart {
                     $dimensions['price_per_cm']
                 );
                 
+                // Calcular novo peso
+                $new_weight = CDP_Admin::calculate_custom_weight(
+                    $product_id,
+                    $dimensions['width'],
+                    $dimensions['height'],
+                    $dimensions['length']
+                );
+                
+                // Aplicar novo preço e peso
                 $product->set_price($new_price);
+                if ($new_weight !== false) {
+                    $product->set_weight($new_weight);
+                }
             }
         }
     }
@@ -271,25 +291,11 @@ class CDP_Cart {
             $price_difference = $custom_price - $dimensions['base_price'];
             if ($price_difference > 0) {
                 $item_data[] = array(
-                    'key' => __('Acréscimo por Personalização', 'stackable-product-shipping'),
+                    'key' => __('Acréscimo por Personalização (Preço)', 'stackable-product-shipping'),
                     'value' => wc_price($price_difference),
                     'display' => ''
                 );
             }
-            
-            // Adicionar botão para editar dimensões
-            $edit_button = sprintf(
-                '<a href="#" class="cdp-edit-cart-dimensions" data-cart-key="%s" data-product-id="%s">%s</a>',
-                esc_attr($cart_item['key'] ?? ''),
-                esc_attr($cart_item['product_id'] ?? ''),
-                __('Editar Dimensões', 'stackable-product-shipping')
-            );
-            
-            $item_data[] = array(
-                'key' => '',
-                'value' => $edit_button,
-                'display' => ''
-            );
         }
         
         return $item_data;
@@ -327,64 +333,96 @@ class CDP_Cart {
     private function get_product_dimension_data($product_id) {
         global $wpdb;
         
-        $cache_key = 'cdp_product_' . $product_id;
-        $data = wp_cache_get($cache_key, 'cdp_products');
+        // Obter produto WooCommerce
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return null;
+        }
         
-        if (false === $data) {
+        // Tentar cache primeiro para dados da tabela
+        $cache_key = 'cdp_product_table_' . $product_id;
+        $table_data = wp_cache_get($cache_key, 'cdp_products');
+        
+        if (false === $table_data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE product_id = %d",
+            $table_data = $wpdb->get_row($wpdb->prepare(
+                "SELECT enabled, max_width, max_height, max_length, max_weight, price_per_cm FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
             
-            wp_cache_set($cache_key, $data, 'cdp_products', 3600);
+            wp_cache_set($cache_key, $table_data, 'cdp_products', 3600);
         }
         
-        return $data;
+        // Se não há dados na tabela, retornar null
+        if (!$table_data) {
+            return null;
+        }
+        
+        // Criar objeto combinado com dimensões base do WooCommerce e dados da tabela
+        $combined_data = new stdClass();
+        $combined_data->enabled = $table_data->enabled;
+        $combined_data->base_width = floatval($product->get_width());
+        $combined_data->base_height = floatval($product->get_height());
+        $combined_data->base_length = floatval($product->get_length());
+        $combined_data->base_weight = floatval($product->get_weight());
+        $combined_data->base_price = floatval($product->get_price());
+        $combined_data->max_width = floatval($table_data->max_width);
+        $combined_data->max_height = floatval($table_data->max_height);
+        $combined_data->max_length = floatval($table_data->max_length);
+        $combined_data->max_weight = floatval($table_data->max_weight);
+        $combined_data->price_per_cm = floatval($table_data->price_per_cm);
+        
+        return $combined_data;
     }
     
     /**
-     * Calcular preço personalizado
+     * Calcular preço personalizado baseado na proporção de volume
      */
-    public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        $width_diff = max(0, $width - $base_width);
-        $height_diff = max(0, $height - $base_height);
-        $length_diff = max(0, $length - $base_length);
+    public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm = null) {
+        // Calcular volumes
+        $base_volume = $base_width * $base_height * $base_length;
+        $custom_volume = $width * $height * $length;
         
-        $total_diff_cm = $width_diff + $height_diff + $length_diff;
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
+        // Se o volume diminuiu ou não mudou, retornar preço base
+        if ($custom_volume <= $base_volume) {
+            return $base_price;
+        }
         
-        return $base_price + $price_increase;
+        // Calcular preço proporcional ao volume
+        $volume_ratio = $custom_volume / $base_volume;
+        $new_price = $base_price * $volume_ratio;
+        
+        return $new_price;
     }
 
     
     /**
      * Adicionar botão de editar dimensões no carrinho
      */
-    public function add_edit_button_to_cart_item($product_name, $cart_item, $cart_item_key) {
-        // Verificar se o item tem dimensões personalizadas
-        if (isset($cart_item['cdp_custom_dimensions'])) {
-            $product_id = $cart_item['product_id'];
+    // public function add_edit_button_to_cart_item($product_name, $cart_item, $cart_item_key) {
+    //     // Verificar se o item tem dimensões personalizadas
+    //     if (isset($cart_item['cdp_custom_dimensions'])) {
+    //         $product_id = $cart_item['product_id'];
             
-            $edit_button = sprintf(
-                '<br><a href="#" class="cdp-edit-cart-dimensions" data-cart-key="%s" data-product-id="%d">%s</a>',
-                esc_attr($cart_item_key),
-                esc_attr($product_id),
-                __('Editar Dimensões', 'stackable-product-shipping')
-            );
+    //         $edit_button = sprintf(
+    //             '<br><a href="#" class="cdp-edit-cart-dimensions" data-cart-key="%s" data-product-id="%d">%s</a>',
+    //             esc_attr($cart_item_key),
+    //             esc_attr($product_id),
+    //             __('Editar Dimensões', 'stackable-product-shipping')
+    //         );
             
-            $product_name .= $edit_button;
-        }
+    //         $product_name .= $edit_button;
+    //     }
         
-        return $product_name;
-    }
+    //     return $product_name;
+    // }
     
     /**
      * AJAX: Obter dados do produto
      */
     public function ajax_get_product_data() {
         // Verificar nonce
-        if (!wp_verify_nonce($_POST['nonce'], 'cdp_nonce')) {
+        if (!wp_verify_nonce($_POST['nonce'], 'cdp_cart_action')) {
             wp_die(__('Erro de segurança', 'stackable-product-shipping'));
         }
         
@@ -412,7 +450,7 @@ class CDP_Cart {
      */
     public function ajax_update_cart_dimensions() {
         // Verificar nonce
-        if (!wp_verify_nonce($_POST['nonce'], 'cdp_nonce')) {
+        if (!wp_verify_nonce($_POST['nonce'], 'cdp_cart_action')) {
             wp_die(__('Erro de segurança', 'stackable-product-shipping'));
         }
         
@@ -456,14 +494,27 @@ class CDP_Cart {
             $product_data->price_per_cm
         );
         
+        // Calcular novo peso
+        $product = wc_get_product($product_id);
+        $base_weight = $product ? floatval($product->get_weight()) : 0;
+        $new_weight = CDP_Admin::calculate_custom_weight($product_id, $width, $height, $length);
+        $custom_weight = $new_weight !== false ? $new_weight : $base_weight;
+        
         // Atualizar dimensões no carrinho
         $cart->cart_contents[$cart_key]['cdp_custom_dimensions'] = array(
             'width' => $width,
             'height' => $height,
             'length' => $length,
-            'base_price' => $product_data->base_price,
+            'base_width' => $product_data->base_width,
+            'base_height' => $product_data->base_height,
+            'base_length' => $product_data->base_length,
             'price_per_cm' => $product_data->price_per_cm,
-            'custom_price' => $new_price
+            'base_price' => $product_data->base_price,
+            'base_weight' => $base_weight,
+            'custom_weight' => $custom_weight,
+            'custom_price' => $new_price,
+            'confirmed' => true,
+            'timestamp' => time()
         );
         
         // Salvar carrinho
@@ -471,7 +522,9 @@ class CDP_Cart {
         
         wp_send_json_success(array(
             'message' => __('Dimensões atualizadas com sucesso', 'stackable-product-shipping'),
-            'new_price' => $new_price
+            'new_price' => $new_price,
+            'new_weight' => $custom_weight,
+            'weight_difference' => $custom_weight - $base_weight
         ));
     }
 }

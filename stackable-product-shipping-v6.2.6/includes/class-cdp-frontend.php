@@ -234,7 +234,6 @@ class CDP_Frontend {
             
             <input type="hidden" id="cdp-product-id" value="<?php echo esc_attr($product->get_id()); ?>">
             <input type="hidden" id="cdp-base-price" value="<?php echo esc_attr($base_price); ?>">
-            <input type="hidden" id="cdp-price-per-cm" value="<?php echo esc_attr($product_data->price_per_cm); ?>">
             <input type="hidden" id="cdp-base-width" value="<?php echo esc_attr($product_data->base_width); ?>">
             <input type="hidden" id="cdp-base-height" value="<?php echo esc_attr($product_data->base_height); ?>">
             <input type="hidden" id="cdp-base-length" value="<?php echo esc_attr($product_data->base_length); ?>">
@@ -248,21 +247,49 @@ class CDP_Frontend {
     private function get_product_dimension_data($product_id) {
         global $wpdb;
         
-        // Tentar cache primeiro
-        $cache_key = 'cdp_product_' . $product_id;
-        $data = wp_cache_get($cache_key, 'cdp_products');
+        // Obter produto WooCommerce
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return null;
+        }
         
-        if (false === $data) {
+        // Tentar cache primeiro para dados da tabela
+        $cache_key = 'cdp_product_table_' . $product_id;
+        $table_data = wp_cache_get($cache_key, 'cdp_products');
+        
+        if (false === $table_data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE product_id = %d",
+            $table_data = $wpdb->get_row($wpdb->prepare(
+                "SELECT enabled, max_width, max_height, max_length, max_weight FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
             
-            wp_cache_set($cache_key, $data, 'cdp_products', 3600);
+            wp_cache_set($cache_key, $table_data, 'cdp_products', 3600);
         }
         
-        return $data;
+        // Criar objeto combinado com dimensões base do WooCommerce e máximas da tabela
+        $combined_data = new stdClass();
+        $combined_data->base_width = floatval($product->get_width());
+        $combined_data->base_height = floatval($product->get_height());
+        $combined_data->base_length = floatval($product->get_length());
+        $combined_data->base_weight = floatval($product->get_weight());
+        
+        if ($table_data) {
+            $combined_data->enabled = $table_data->enabled;
+            $combined_data->max_width = floatval($table_data->max_width);
+            $combined_data->max_height = floatval($table_data->max_height);
+            $combined_data->max_length = floatval($table_data->max_length);
+            $combined_data->max_weight = floatval($table_data->max_weight);
+        } else {
+            // Se não há dados na tabela, desabilitar dimensões personalizadas
+            $combined_data->enabled = 0;
+            $combined_data->max_width = $combined_data->base_width;
+            $combined_data->max_height = $combined_data->base_height;
+            $combined_data->max_length = $combined_data->base_length;
+            $combined_data->max_weight = $combined_data->base_weight;
+        }
+        
+        return $combined_data;
     }
     
     /**
@@ -322,6 +349,7 @@ class CDP_Frontend {
         }
         
         $base_price = $product->get_price();
+        $base_weight = floatval($product->get_weight());
         
         $calculated_price = $this->calculate_custom_price(
             $base_price,
@@ -330,11 +358,19 @@ class CDP_Frontend {
             $product_data->price_per_cm
         );
         
-        error_log('CDP AJAX: Preço calculado com sucesso - Preço: ' . $calculated_price);
+        // Calcular peso personalizado
+        $calculated_weight = CDP_Admin::calculate_custom_weight($product_id, $width, $height, $length);
+        $custom_weight = $calculated_weight !== false ? $calculated_weight : $base_weight;
+        
+        error_log('CDP AJAX: Preço e peso calculados com sucesso - Preço: ' . $calculated_price . ', Peso: ' . $custom_weight);
         
         wp_send_json_success(array(
             'price' => $calculated_price,
-            'formatted_price' => wc_price($calculated_price)
+            'formatted_price' => wc_price($calculated_price),
+            'weight' => $custom_weight,
+            'base_weight' => $base_weight,
+            'weight_difference' => $custom_weight - $base_weight,
+            'formatted_weight' => number_format($custom_weight, 3, ',', '.') . ' kg'
         ));
     }
     
@@ -372,27 +408,30 @@ class CDP_Frontend {
     }
     
     /**
-     * Calcular preço personalizado
+     * Calcular preço personalizado baseado na proporção de volume
      */
-    public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        // Calcular diferença total em centímetros
-        $width_diff = max(0, $width - $base_width);
-        $height_diff = max(0, $height - $base_height);
-        $length_diff = max(0, $length - $base_length);
+    public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm = null) {
+        // Calcular volumes
+        $base_volume = $base_width * $base_height * $base_length;
+        $custom_volume = $width * $height * $length;
         
-        $total_diff_cm = $width_diff + $height_diff + $length_diff;
+        // Se o volume diminuiu ou não mudou, retornar preço base
+        if ($custom_volume <= $base_volume) {
+            return $base_price;
+        }
         
-        // Calcular acréscimo
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
+        // Calcular preço proporcional ao volume
+        $volume_ratio = $custom_volume / $base_volume;
+        $new_price = $base_price * $volume_ratio;
         
-        return $base_price + $price_increase;
+        return $new_price;
     }
     
     /**
      * Enfileirar scripts do frontend
      */
     public function enqueue_frontend_scripts() {
-        if (is_product()) {
+        if (is_product() || is_cart()) {
             wp_enqueue_script(
                 'cdp-frontend-js',
                 SPS_PLUGIN_URL . 'assets/js/cdp-frontend.js',
@@ -404,6 +443,7 @@ class CDP_Frontend {
             wp_localize_script('cdp-frontend-js', 'cdp_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('cdp_calculate_price'),
+                'cart_nonce' => wp_create_nonce('cdp_cart_action'),
                 'pluginUrl' => SPS_PLUGIN_URL,
                 'messages' => array(
                     'calculating' => __('Calculando...', 'stackable-product-shipping'),

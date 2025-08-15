@@ -211,26 +211,52 @@ class SPS_Main {
     public static function get_product_dimension_data($product_id) {
         global $wpdb;
         
-        $cache_key = 'cdp_product_' . $product_id;
-        $data = wp_cache_get($cache_key, 'cdp_products');
+        // Obter produto WooCommerce
+        $product = wc_get_product($product_id);
+        if (!$product) {
+            return null;
+        }
         
-        if (false === $data) {
+        // Tentar cache primeiro para dados da tabela
+        $cache_key = 'cdp_product_table_' . $product_id;
+        $table_data = wp_cache_get($cache_key, 'cdp_products');
+        
+        if (false === $table_data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
-                "SELECT * FROM $table_name WHERE product_id = %d",
+            $table_data = $wpdb->get_row($wpdb->prepare(
+                "SELECT enabled, max_width, max_height, max_length, max_weight, price_per_cm FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
             
-            wp_cache_set($cache_key, $data, 'cdp_products', 3600);
+            wp_cache_set($cache_key, $table_data, 'cdp_products', 3600);
         }
         
-        return $data;
+        // Se não há dados na tabela, retornar null
+        if (!$table_data) {
+            return null;
+        }
+        
+        // Criar objeto combinado com dimensões base do WooCommerce e dados da tabela
+        $combined_data = new stdClass();
+        $combined_data->enabled = $table_data->enabled;
+        $combined_data->base_width = floatval($product->get_width());
+        $combined_data->base_height = floatval($product->get_height());
+        $combined_data->base_length = floatval($product->get_length());
+        $combined_data->base_weight = floatval($product->get_weight());
+        $combined_data->base_price = floatval($product->get_price());
+        $combined_data->max_width = floatval($table_data->max_width);
+        $combined_data->max_height = floatval($table_data->max_height);
+        $combined_data->max_length = floatval($table_data->max_length);
+        $combined_data->max_weight = floatval($table_data->max_weight);
+        $combined_data->price_per_cm = floatval($table_data->price_per_cm);
+        
+        return $combined_data;
     }
     
     /**
-     * Calcular preço personalizado (método estático para uso geral)
+     * Calcular preço personalizado baseado na proporção de volume (método estático para uso geral)
      */
-    public static function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
+    public static function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm = null) {
         // Calcular diferença total em centímetros
         $width_diff = max(0, $width - $base_width);
         $height_diff = max(0, $height - $base_height);
@@ -238,8 +264,10 @@ class SPS_Main {
         
         $total_diff_cm = $width_diff + $height_diff + $length_diff;
         
-        // Calcular acréscimo
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
+        // Calcular preço adicional baseado na proporção preço/dimensão do produto base
+        $base_total_dimensions = $base_width + $base_height + $base_length;
+        $price_per_cm = ($base_price / $base_total_dimensions); // 1% da proporção base
+        $price_increase = $price_per_cm * $total_diff_cm;
         
         return $base_price + $price_increase;
     }
