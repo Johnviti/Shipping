@@ -562,14 +562,16 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
                     'sps_multi_package_data' => [
                         'product_id' => $item_data['product_id'],
                         'package_name' => $package_config['name'],
+                        'package_description' => isset($package_config['description']) ? $package_config['description'] : '',
                         'package_index' => $package_index
                     ],
                 ];
                 
                 $final_packages[] = $multi_package;
                 
+                $description_log = !empty($package_config['description']) ? ' - Descrição: ' . $package_config['description'] : '';
                 error_log('SPS: Pacote múltiplo criado - ' . $package_config['name'] . ' - Peso: ' . $package_config['weight'] . 'kg, Dimensões: ' . 
-                          $package_config['height'] . 'x' . $package_config['width'] . 'x' . $package_config['length'] . 'cm');
+                          $package_config['height'] . 'x' . $package_config['width'] . 'x' . $package_config['length'] . 'cm' . $description_log);
             }
         }
     }
@@ -764,6 +766,7 @@ add_action('woocommerce_checkout_create_order', function($order, $data) {
                 'largura_total' => $package['package_width'],
                 'comprimento_total' => $package['package_length'],
                 'nome_pacote' => $package['sps_pacote'],
+                'descricao_pacote' => isset($package['sps_multi_package_data']['package_description']) ? $package['sps_multi_package_data']['package_description'] : '',
                 'produto_id' => $package['sps_multi_package_data']['product_id'],
                 'nome_produto' => '',
                 'indice_pacote' => $package['sps_multi_package_data']['package_index'],

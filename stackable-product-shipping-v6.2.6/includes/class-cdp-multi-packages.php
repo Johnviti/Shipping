@@ -27,8 +27,18 @@ class CDP_Multi_Packages {
     private function __construct() {
         add_action('admin_init', array($this, 'ensure_table_exists'));
         add_action('add_meta_boxes', array($this, 'add_meta_boxes'));
-        add_action('woocommerce_process_product_meta', array($this, 'save_product_meta'));
+        
+        // Verificar se WooCommerce está carregado antes de adicionar hooks
+        if (class_exists('WooCommerce')) {
+            add_action('woocommerce_process_product_meta', array($this, 'save_product_meta'), 10, 1);
+        }
+        
+        // Hook de fallback sempre ativo
+        add_action('save_post', array($this, 'save_product_meta_fallback'), 10, 1);
         add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
+        
+        // Log de inicialização
+        error_log('CDP Multi Packages: Classe inicializada, WooCommerce ativo: ' . (class_exists('WooCommerce') ? 'Sim' : 'Não'));
     }
     
     /**
@@ -101,8 +111,12 @@ class CDP_Multi_Packages {
      * Renderizar meta box
      */
     public function render_meta_box($post) {
+        error_log('CDP Multi Packages: Renderizando meta box para produto ' . $post->ID);
+        
         // Buscar pacotes existentes
         $packages = $this->get_product_packages($post->ID);
+        
+        error_log('CDP Multi Packages: Encontrados ' . count($packages) . ' pacotes existentes');
         
         wp_nonce_field('cdp_save_multi_packages', 'cdp_multi_packages_nonce');
         ?>
@@ -133,7 +147,6 @@ class CDP_Multi_Packages {
                 <ul>
                     <li>• Cada pacote será calculado separadamente no frete</li>
                     <li>• O produto continuará sendo um único item no carrinho</li>
-                    <li>• As funções de empilhamento e agrupamento não são afetadas</li>
                     <li>• Deixe vazio para usar apenas o pacote padrão do WooCommerce</li>
                 </ul>
             </div>
@@ -170,6 +183,14 @@ class CDP_Multi_Packages {
         .cdp-package-field input {
             padding: 6px 8px;
         }
+        .cdp-package-description {
+            grid-column: 1 / -1;
+        }
+        .cdp-package-description textarea {
+            width: 100%;
+            resize: vertical;
+            min-height: 60px;
+        }
         .cdp-remove-package {
             color: #a00;
             text-decoration: none;
@@ -203,6 +224,7 @@ class CDP_Multi_Packages {
      */
     private function render_package_row($index, $package = null) {
         $package_name = $package ? $package->package_name : 'Pacote ' . ($index + 1);
+        $description = $package ? $package->description : '';
         $width = $package ? $package->width : '';
         $height = $package ? $package->height : '';
         $length = $package ? $package->length : '';
@@ -220,6 +242,13 @@ class CDP_Multi_Packages {
                            name="cdp_package_names[<?php echo $index; ?>]" 
                            value="<?php echo esc_attr($package_name); ?>" 
                            placeholder="Ex: Pacote Principal, Acessórios, etc.">
+                </div>
+                
+                <div class="cdp-package-field cdp-package-description">
+                    <label>Descrição Detalhada (aparecerá na nota do pedido)</label>
+                    <textarea name="cdp_package_descriptions[<?php echo $index; ?>]" 
+                              rows="3" 
+                              placeholder="Descrição detalhada do pacote que aparecerá nas informações do pedido..."><?php echo esc_textarea($description); ?></textarea>
                 </div>
                 
                 <div class="cdp-package-field">
@@ -295,16 +324,23 @@ class CDP_Multi_Packages {
      * Salvar dados dos pacotes
      */
     public function save_product_meta($product_id) {
+        // Log de debug
+        error_log('CDP Multi Packages: Iniciando save_product_meta para produto ' . $product_id);
+        
         // Verificar nonce
         if (!isset($_POST['cdp_multi_packages_nonce']) || 
             !wp_verify_nonce($_POST['cdp_multi_packages_nonce'], 'cdp_save_multi_packages')) {
+            error_log('CDP Multi Packages: Falha na verificação do nonce');
             return;
         }
         
         // Verificar permissões
         if (!current_user_can('edit_post', $product_id)) {
+            error_log('CDP Multi Packages: Usuário sem permissão para editar produto ' . $product_id);
             return;
         }
+        
+        error_log('CDP Multi Packages: Verificações passaram, processando dados...');
         
         global $wpdb;
         $table_name = $wpdb->prefix . 'cdp_product_packages';
@@ -317,19 +353,26 @@ class CDP_Multi_Packages {
         
         // Processar novos pacotes
         if (isset($_POST['cdp_package_names']) && is_array($_POST['cdp_package_names'])) {
+            error_log('CDP Multi Packages: Encontrados ' . count($_POST['cdp_package_names']) . ' pacotes para processar');
+            error_log('CDP Multi Packages: Dados POST: ' . print_r($_POST, true));
+            
             foreach ($_POST['cdp_package_names'] as $index => $package_name) {
+                $description = isset($_POST['cdp_package_descriptions'][$index]) ? sanitize_textarea_field($_POST['cdp_package_descriptions'][$index]) : '';
                 $width = isset($_POST['cdp_package_widths'][$index]) ? floatval($_POST['cdp_package_widths'][$index]) : 0;
                 $height = isset($_POST['cdp_package_heights'][$index]) ? floatval($_POST['cdp_package_heights'][$index]) : 0;
                 $length = isset($_POST['cdp_package_lengths'][$index]) ? floatval($_POST['cdp_package_lengths'][$index]) : 0;
                 $weight = isset($_POST['cdp_package_weights'][$index]) ? floatval($_POST['cdp_package_weights'][$index]) : 0;
                 
+                error_log("CDP Multi Packages: Pacote $index - Nome: $package_name, Dimensões: {$width}x{$height}x{$length}, Peso: $weight");
+                
                 // Só salvar se pelo menos uma dimensão foi preenchida
                 if ($width > 0 || $height > 0 || $length > 0 || $weight > 0) {
-                    $wpdb->insert(
+                    $result = $wpdb->insert(
                         $table_name,
                         array(
                             'product_id' => $product_id,
                             'package_name' => sanitize_text_field($package_name),
+                            'description' => $description,
                             'package_order' => $index + 1,
                             'width' => $width,
                             'height' => $height,
@@ -339,12 +382,47 @@ class CDP_Multi_Packages {
                         ),
                         array('%d', '%s', '%d', '%f', '%f', '%f', '%f', '%d')
                     );
+                    
+                    if ($result === false) {
+                        error_log('CDP Multi Packages: Erro ao inserir pacote ' . $index . ': ' . $wpdb->last_error);
+                    } else {
+                        error_log('CDP Multi Packages: Pacote ' . $index . ' salvo com sucesso (ID: ' . $wpdb->insert_id . ')');
+                    }
+                } else {
+                    error_log('CDP Multi Packages: Pacote ' . $index . ' ignorado (sem dimensões válidas)');
                 }
             }
+        } else {
+            error_log('CDP Multi Packages: Nenhum dado de pacote encontrado no POST');
         }
         
         // Limpar cache
         wp_cache_delete('cdp_product_packages_' . $product_id, 'cdp_packages');
+    }
+    
+    /**
+     * Função de fallback para salvar dados via save_post
+     */
+    public function save_product_meta_fallback($post_id) {
+        // Verificar se é um produto
+        if (get_post_type($post_id) !== 'product') {
+            return;
+        }
+        
+        // Verificar se não é um autosave
+        if (defined('DOING_AUTOSAVE') && DOING_AUTOSAVE) {
+            return;
+        }
+        
+        // Verificar se há dados de pacotes no POST
+        if (!isset($_POST['cdp_multi_packages_nonce'])) {
+            return;
+        }
+        
+        error_log('CDP Multi Packages: Executando fallback save_post para produto ' . $post_id);
+        
+        // Chamar a função principal de salvamento
+        $this->save_product_meta($post_id);
     }
     
     /**
@@ -394,6 +472,7 @@ class CDP_Multi_Packages {
         foreach ($packages as $package) {
             $shipping_packages[] = array(
                 'name' => $package->package_name,
+                'description' => isset($package->description) ? $package->description : '',
                 'width' => floatval($package->width),
                 'height' => floatval($package->height),
                 'length' => floatval($package->length),

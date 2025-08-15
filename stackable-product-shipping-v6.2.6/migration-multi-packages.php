@@ -52,6 +52,7 @@ class CDP_Multi_Packages_Migration {
             id int(11) NOT NULL AUTO_INCREMENT,
             product_id bigint(20) unsigned NOT NULL,
             package_name varchar(255) NOT NULL DEFAULT 'Pacote',
+            description TEXT NULL,
             width decimal(10,2) NOT NULL DEFAULT 0.00,
             height decimal(10,2) NOT NULL DEFAULT 0.00,
             length decimal(10,2) NOT NULL DEFAULT 0.00,
