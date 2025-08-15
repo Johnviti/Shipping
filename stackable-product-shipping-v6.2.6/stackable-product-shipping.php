@@ -42,11 +42,20 @@ require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-import.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-meta-box.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-page-renderer.php';
 
+// Incluir arquivos de migração
+require_once SPS_PLUGIN_DIR . 'migration-multi-packages.php';
+
 // Include Custom Dimensions Pricing classes
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-admin.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-frontend.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-cart.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-order.php';
+require_once SPS_PLUGIN_DIR . 'includes/class-cdp-multi-packages.php';
+
+// Include debug file (temporary)
+if (defined('WP_DEBUG') && WP_DEBUG) {
+    require_once SPS_PLUGIN_DIR . 'debug-metabox.php';
+}
 
 /**
  * Classe principal do plugin integrado
@@ -148,6 +157,9 @@ class SPS_Main {
         // Criar tabelas CDP
         $this->create_cdp_tables();
         
+        // Executar migração automática
+        $this->migrate_cdp_table();
+        
         // Definir versão
         update_option('sps_version', SPS_VERSION);
         
@@ -206,6 +218,85 @@ class SPS_Main {
     }
     
     /**
+     * Migração automática da tabela cdp_product_dimensions
+     */
+    private function migrate_cdp_table() {
+        global $wpdb;
+        
+        $table_name = $wpdb->prefix . 'cdp_product_dimensions';
+        
+        // Verificar se a tabela existe
+        $table_exists = $wpdb->get_var("SHOW TABLES LIKE '{$table_name}'") == $table_name;
+        if (!$table_exists) {
+            return; // Tabela não existe, não há nada para migrar
+        }
+        
+        // Verificar colunas existentes
+        $columns = $wpdb->get_results("SHOW COLUMNS FROM {$table_name}");
+        $column_names = array_column($columns, 'Field');
+        
+        try {
+            // 1. Renomear weight_per_cm3 para density_per_cm3 (se existir)
+            if (in_array('weight_per_cm3', $column_names) && !in_array('density_per_cm3', $column_names)) {
+                $wpdb->query("ALTER TABLE {$table_name} CHANGE weight_per_cm3 density_per_cm3 decimal(10,5) DEFAULT 0");
+            }
+            
+            // 2. Remover colunas desnecessárias (dimensões base agora vêm do WooCommerce)
+            $columns_to_remove = ['base_width', 'base_height', 'base_length', 'base_weight'];
+            foreach ($columns_to_remove as $column) {
+                if (in_array($column, $column_names)) {
+                    $wpdb->query("ALTER TABLE {$table_name} DROP COLUMN {$column}");
+                }
+            }
+            
+            // 3. Adicionar colunas faltantes
+            $columns_to_add = [
+                'max_length' => 'decimal(10,2) DEFAULT 0 AFTER max_height',
+                'max_weight' => 'decimal(10,3) DEFAULT 0 AFTER max_length',
+                'density_per_cm3' => 'decimal(10,5) DEFAULT 0 AFTER price_per_cm'
+            ];
+            
+            // Atualizar lista de colunas após remoções
+            $columns = $wpdb->get_results("SHOW COLUMNS FROM {$table_name}");
+            $column_names = array_column($columns, 'Field');
+            
+            foreach ($columns_to_add as $column => $definition) {
+                if (!in_array($column, $column_names)) {
+                    $wpdb->query("ALTER TABLE {$table_name} ADD COLUMN {$column} {$definition}");
+                }
+            }
+            
+            // 4. Atualizar estrutura das colunas existentes
+            $final_columns = $wpdb->get_results("SHOW COLUMNS FROM {$table_name}");
+            $final_column_names = array_column($final_columns, 'Field');
+            
+            $modify_queries = [];
+            $column_definitions = [
+                'max_width' => 'decimal(10,2) DEFAULT 0',
+                'max_height' => 'decimal(10,2) DEFAULT 0',
+                'max_length' => 'decimal(10,2) DEFAULT 0',
+                'max_weight' => 'decimal(10,3) DEFAULT 0',
+                'price_per_cm' => 'decimal(10,4) DEFAULT 0',
+                'density_per_cm3' => 'decimal(10,5) DEFAULT 0'
+            ];
+            
+            foreach ($column_definitions as $column => $definition) {
+                if (in_array($column, $final_column_names)) {
+                    $modify_queries[] = "MODIFY COLUMN {$column} {$definition}";
+                }
+            }
+            
+            if (!empty($modify_queries)) {
+                $modify_sql = "ALTER TABLE {$table_name} " . implode(", ", $modify_queries);
+                $wpdb->query($modify_sql);
+            }
+            
+        } catch (Exception $e) {
+            error_log('SPS: Erro durante migração da tabela: ' . $e->getMessage());
+        }
+    }
+    
+    /**
      * Obter dados de dimensão do produto (método estático para uso geral)
      */
     public static function get_product_dimension_data($product_id) {
@@ -216,10 +307,31 @@ class SPS_Main {
         
         if (false === $data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
+            $table_data = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
+            
+            // Obter produto WooCommerce para dimensões base
+            $product = wc_get_product($product_id);
+            
+            if ($table_data && $product) {
+                // Combinar dados da tabela com dimensões base do produto
+                $data = (object) array(
+                    'product_id' => $table_data->product_id,
+                    'base_width' => (float) $product->get_width(),
+                    'base_height' => (float) $product->get_height(),
+                    'base_length' => (float) $product->get_length(),
+                    'max_width' => $table_data->max_width,
+                    'max_height' => $table_data->max_height,
+                    'max_length' => $table_data->max_length,
+                    'max_weight' => $table_data->max_weight,
+                    'price_per_cm' => $table_data->price_per_cm,
+                    'density_per_cm3' => $table_data->density_per_cm3
+                );
+            } else {
+                $data = null;
+            }
             
             wp_cache_set($cache_key, $data, 'cdp_products', 3600);
         }
@@ -231,17 +343,34 @@ class SPS_Main {
      * Calcular preço personalizado (método estático para uso geral)
      */
     public static function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        // Calcular diferença total em centímetros
-        $width_diff = max(0, $width - $base_width);
-        $height_diff = max(0, $height - $base_height);
-        $length_diff = max(0, $length - $base_length);
+        // Obter método de cálculo configurado
+        $calculation_method = get_option('cdp_calculation_method', 'linear');
         
-        $total_diff_cm = $width_diff + $height_diff + $length_diff;
-        
-        // Calcular acréscimo
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
-        
-        return $base_price + $price_increase;
+        if ($calculation_method === 'volume') {
+            // Cálculo baseado em fator de volume
+            $volume_original = $base_width * $base_height * $base_length;
+            $volume_novo = $width * $height * $length;
+            
+            // Evitar divisão por zero
+            if ($volume_original <= 0) {
+                return $base_price;
+            }
+            
+            $fator = $volume_novo / $volume_original;
+            $preco_novo = $base_price * $fator;
+            
+            return $preco_novo;
+        } else {
+            // Cálculo linear (padrão)
+            $width_diff = max(0, $width - $base_width);
+            $height_diff = max(0, $height - $base_height);
+            $length_diff = max(0, $length - $base_length);
+            
+            $total_diff_cm = $width_diff + $height_diff + $length_diff;
+            $price_increase = $price_per_cm * $total_diff_cm;
+            
+            return $base_price + $price_increase;
+        }
     }
 }
 
@@ -267,6 +396,11 @@ function sps_register_ajax_handlers() {
     add_action('wp_ajax_sps_export_excel', ['SPS_Product_Export', 'export_to_excel']);
     add_action('wp_ajax_sps_import_excel', ['SPS_Product_Import', 'import_from_excel']);
     add_action('wp_ajax_sps_debug_config', ['SPS_Admin_Products', 'debug_config']);
+    
+    // Inicializar sistema de múltiplos pacotes
+    if (class_exists('CDP_Multi_Packages')) {
+        CDP_Multi_Packages::init();
+    }
     
 }
  
@@ -385,14 +519,190 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
         'sps_items_detail' => $result['items'],
     ];
 
-    return [$single_package];
+    $final_packages = [$single_package];
+
+    // Verificar se há produtos com múltiplos pacotes físicos
+    $multi_packages_data = [];
+    $has_multi_packages = false;
+
+    foreach ($cart as $cart_item_key => $cart_item) {
+        $product_id = $cart_item['product_id'];
+        $quantity = $cart_item['quantity'];
+        
+        // Verificar se o produto tem múltiplos pacotes configurados
+        if (CDP_Multi_Packages::has_multiple_packages($product_id)) {
+            $packages_config = CDP_Multi_Packages::get_packages_for_shipping($product_id, $quantity);
+            
+            if (!empty($packages_config)) {
+                $has_multi_packages = true;
+                $multi_packages_data[$cart_item_key] = [
+                    'product_id' => $product_id,
+                    'quantity' => $quantity,
+                    'packages' => $packages_config,
+                    'cart_item' => $cart_item
+                ];
+            }
+        }
+    }
+
+    // Se há produtos com múltiplos pacotes, criar pacotes adicionais
+    if ($has_multi_packages && !empty($multi_packages_data)) {
+        foreach ($multi_packages_data as $cart_item_key => $item_data) {
+            foreach ($item_data['packages'] as $package_index => $package_config) {
+                // Criar item virtual para cada pacote
+                $virtual_item = $item_data['cart_item'];
+                $virtual_item['data'] = clone $virtual_item['data'];
+                
+                // Definir as dimensões e peso do pacote
+                if (is_object($virtual_item['data'])) {
+                    $virtual_item['data']->set_width($package_config['width']);
+                    $virtual_item['data']->set_height($package_config['height']);
+                    $virtual_item['data']->set_length($package_config['length']);
+                    $virtual_item['data']->set_weight($package_config['weight']);
+                    $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' - ' . $package_config['name']);
+                }
+                
+                // Criar pacote individual
+                $multi_package = [
+                    'contents'        => [$cart_item_key . '_package_' . $package_index => $virtual_item],
+                    'contents_cost'   => isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0,
+                    'applied_coupons' => WC()->cart->get_applied_coupons(),
+                    'user'            => ['ID' => get_current_user_id()],
+                    'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+                    'sps_multi_package' => true,
+                    'sps_pacote'      => $package_config['name'],
+                    'package_weight'  => $package_config['weight'],
+                    'package_height'  => $package_config['height'],
+                    'package_length'  => $package_config['length'],
+                    'package_width'   => $package_config['width'],
+                    'sps_multi_package_data' => [
+                        'product_id' => $item_data['product_id'],
+                        'package_name' => $package_config['name'],
+                        'package_index' => $package_index
+                    ],
+                ];
+                
+                $final_packages[] = $multi_package;
+                
+                error_log('SPS: Pacote múltiplo criado - ' . $package_config['name'] . ' - Peso: ' . $package_config['weight'] . 'kg, Dimensões: ' . 
+                          $package_config['height'] . 'x' . $package_config['width'] . 'x' . $package_config['length'] . 'cm');
+            }
+        }
+    }
+
+    // Verificar se há produtos com dimensões personalizadas para criar pacote adicional
+    $custom_dimensions_data = [];
+    $has_custom_dimensions = false;
+
+    foreach ($cart as $cart_item_key => $cart_item) {
+        if (isset($cart_item['cdp_custom_dimensions'])) {
+            $custom_data = $cart_item['cdp_custom_dimensions'];
+            $product_id = $cart_item['product_id'];
+            $quantity = $cart_item['quantity'];
+            
+            // Obter dimensões base do WooCommerce
+            $product = wc_get_product($product_id);
+            if (!$product) continue;
+            
+            $base_width = (float) $product->get_width();
+            $base_height = (float) $product->get_height();
+            $base_length = (float) $product->get_length();
+            
+            // Calcular dimensões extras
+            $extra_width = max(0, (float) $custom_data['width'] - $base_width);
+            $extra_height = max(0, (float) $custom_data['height'] - $base_height);
+            $extra_length = max(0, (float) $custom_data['length'] - $base_length);
+            
+            if ($extra_width > 0 || $extra_height > 0 || $extra_length > 0) {
+                $has_custom_dimensions = true;
+                
+                // Obter densidade para calcular peso extra
+                $dimensions_config = CDP_Admin::get_product_custom_dimensions($product_id);
+                $density_per_cm3 = isset($dimensions_config->density_per_cm3) ? (float) $dimensions_config->density_per_cm3 : 0;
+                
+                // Calcular volume extra e peso extra
+                $extra_volume = $extra_width * $extra_height * $extra_length;
+                $extra_weight = $extra_volume * $density_per_cm3 / 1000; // converter gramas para kg
+                
+                $custom_dimensions_data[] = [
+                    'cart_item_key' => $cart_item_key,
+                    'product_id' => $product_id,
+                    'quantity' => $quantity,
+                    'extra_width' => $extra_width,
+                    'extra_height' => $extra_height,
+                    'extra_length' => $extra_length,
+                    'extra_weight' => $extra_weight,
+                    'cart_item' => $cart_item
+                ];
+            }
+        }
+    }
+
+    // Se há dimensões personalizadas, criar pacote adicional
+    if ($has_custom_dimensions && !empty($custom_dimensions_data)) {
+        // Calcular dimensões totais do pacote adicional
+        $total_extra_width = 0;
+        $total_extra_height = 0;
+        $total_extra_length = 0;
+        $total_extra_weight = 0;
+        $custom_contents = [];
+        $custom_total_cost = 0;
+        
+        foreach ($custom_dimensions_data as $custom_item) {
+            // Somar dimensões extras (considerando quantidade)
+            $total_extra_width += $custom_item['extra_width'] * $custom_item['quantity'];
+            $total_extra_height += $custom_item['extra_height'] * $custom_item['quantity'];
+            $total_extra_length += $custom_item['extra_length'] * $custom_item['quantity'];
+            $total_extra_weight += $custom_item['extra_weight'] * $custom_item['quantity'];
+            
+            // Criar item virtual para o pacote adicional
+            $virtual_item = $custom_item['cart_item'];
+            $virtual_item['data'] = clone $virtual_item['data'];
+            
+            // Definir as dimensões extras como as dimensões do item virtual
+            if (is_object($virtual_item['data'])) {
+                $virtual_item['data']->set_width($custom_item['extra_width']);
+                $virtual_item['data']->set_height($custom_item['extra_height']);
+                $virtual_item['data']->set_length($custom_item['extra_length']);
+                $virtual_item['data']->set_weight($custom_item['extra_weight']);
+                $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Dimensões Extras)');
+            }
+            
+            $custom_contents[$custom_item['cart_item_key'] . '_custom'] = $virtual_item;
+            $custom_total_cost += isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0;
+        }
+        
+        // Criar pacote adicional
+        $custom_package = [
+            'contents'        => $custom_contents,
+            'contents_cost'   => $custom_total_cost,
+            'applied_coupons' => WC()->cart->get_applied_coupons(),
+            'user'            => ['ID' => get_current_user_id()],
+            'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+            'sps_custom_dimensions_package' => true,
+            'sps_pacote'      => "Pacote Dimensões Extras",
+            'package_weight'  => $total_extra_weight,
+            'package_height'  => $total_extra_height,
+            'package_length'  => $total_extra_length,
+            'package_width'   => $total_extra_width,
+            'sps_custom_dimensions_data' => $custom_dimensions_data,
+        ];
+        
+        $final_packages[] = $custom_package;
+        
+        error_log('SPS: Pacote de dimensões extras criado - Peso: ' . $total_extra_weight . 'kg, Dimensões: ' . 
+                  $total_extra_height . 'x' . $total_extra_width . 'x' . $total_extra_length . 'cm');
+    }
+
+    return $final_packages;
 });
 
-// Salva a informação do pacote único no pedido
+// Salva a informação dos pacotes no pedido
 add_action('woocommerce_checkout_create_order', function($order, $data) {
     $packages = WC()->shipping()->get_packages();
     
-    foreach ($packages as $package) {
+    foreach ($packages as $package_index => $package) {
+        // Salvar informações do pacote único
         if (isset($package['sps_single_package']) && $package['sps_single_package']) {
             $package_info = [
                 'tipo' => 'pacote_unico',
@@ -425,7 +735,57 @@ add_action('woocommerce_checkout_create_order', function($order, $data) {
             }
             
             $order->update_meta_data('_sps_pacote_unico_info', wp_json_encode($package_info));
-            break; // Só deve haver um pacote único
+        }
+        
+        // Salvar informações do pacote de dimensões extras
+        if (isset($package['sps_custom_dimensions_package']) && $package['sps_custom_dimensions_package']) {
+            $custom_package_info = [
+                'tipo' => 'pacote_dimensoes_extras',
+                'peso_total' => $package['package_weight'],
+                'altura_total' => $package['package_height'],
+                'largura_total' => $package['package_width'],
+                'comprimento_total' => $package['package_length'],
+                'produtos_personalizados' => [],
+            ];
+            
+            // Adiciona informações dos produtos com dimensões personalizadas
+            foreach ($package['sps_custom_dimensions_data'] ?? [] as $custom_item) {
+                $product = wc_get_product($custom_item['product_id']);
+                $custom_package_info['produtos_personalizados'][] = [
+                    'produto_id' => $custom_item['product_id'],
+                    'nome' => $product ? $product->get_name() : "Produto #{$custom_item['product_id']}",
+                    'quantidade' => $custom_item['quantity'],
+                    'largura_extra' => $custom_item['extra_width'],
+                    'altura_extra' => $custom_item['extra_height'],
+                    'comprimento_extra' => $custom_item['extra_length'],
+                    'peso_extra' => $custom_item['extra_weight'],
+                ];
+            }
+            
+            $order->update_meta_data('_sps_pacote_dimensoes_extras_info', wp_json_encode($custom_package_info));
+        }
+        
+        // Salvar informações dos múltiplos pacotes
+        if (isset($package['sps_multi_package']) && $package['sps_multi_package']) {
+            $multi_package_info = [
+                'tipo' => 'pacote_multiplo',
+                'peso_total' => $package['package_weight'],
+                'altura_total' => $package['package_height'],
+                'largura_total' => $package['package_width'],
+                'comprimento_total' => $package['package_length'],
+                'nome_pacote' => $package['sps_pacote'],
+                'produto_id' => $package['sps_multi_package_data']['product_id'],
+                'nome_produto' => '',
+                'indice_pacote' => $package['sps_multi_package_data']['package_index'],
+            ];
+            
+            // Obter nome do produto
+            $product = wc_get_product($package['sps_multi_package_data']['product_id']);
+            if ($product) {
+                $multi_package_info['nome_produto'] = $product->get_name();
+            }
+            
+            $order->update_meta_data('_sps_pacote_multiplo_info_' . $package_index, wp_json_encode($multi_package_info));
         }
     }
 }, 10, 2);

@@ -254,10 +254,32 @@ class CDP_Frontend {
         
         if (false === $data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
+            $table_data = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
+            
+            // Obter produto WooCommerce para dimensões base
+            $product = wc_get_product($product_id);
+            
+            if ($table_data && $product) {
+                // Combinar dados da tabela com dimensões base do produto
+                $data = (object) array(
+                    'product_id' => $table_data->product_id,
+                    'enabled' => isset($table_data->enabled) ? $table_data->enabled : 0,
+                    'base_width' => (float) $product->get_width(),
+                    'base_height' => (float) $product->get_height(),
+                    'base_length' => (float) $product->get_length(),
+                    'max_width' => $table_data->max_width,
+                    'max_height' => $table_data->max_height,
+                    'max_length' => $table_data->max_length,
+                    'max_weight' => $table_data->max_weight,
+                    'price_per_cm' => $table_data->price_per_cm,
+                    'density_per_cm3' => $table_data->density_per_cm3
+                );
+            } else {
+                $data = null;
+            }
             
             wp_cache_set($cache_key, $data, 'cdp_products', 3600);
         }
@@ -352,18 +374,19 @@ class CDP_Frontend {
             $sql = "CREATE TABLE $table_name (
                 id mediumint(9) NOT NULL AUTO_INCREMENT,
                 product_id bigint(20) NOT NULL,
-                enabled tinyint(1) DEFAULT 1,
-                base_width decimal(10,2) NOT NULL,
-                base_height decimal(10,2) NOT NULL,
-                base_length decimal(10,2) NOT NULL,
-                max_width decimal(10,2) NOT NULL,
-                max_height decimal(10,2) NOT NULL,
-                max_length decimal(10,2) NOT NULL,
-                price_per_cm decimal(10,4) NOT NULL,
+                max_width decimal(10,2) DEFAULT 0,
+                max_height decimal(10,2) DEFAULT 0,
+                max_length decimal(10,2) DEFAULT 0,
+                max_weight decimal(10,3) DEFAULT 0,
+                price_per_cm decimal(10,4) DEFAULT 0,
+                density_per_cm3 decimal(10,5) DEFAULT 0,
+                enabled tinyint(1) DEFAULT 0,
                 created_at datetime DEFAULT CURRENT_TIMESTAMP,
                 updated_at datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
                 PRIMARY KEY (id),
-                UNIQUE KEY product_id (product_id)
+                UNIQUE KEY product_id (product_id),
+                KEY enabled (enabled),
+                KEY created_at (created_at)
             ) $charset_collate;";
             
             require_once(ABSPATH . 'wp-admin/includes/upgrade.php');
@@ -375,17 +398,34 @@ class CDP_Frontend {
      * Calcular preço personalizado
      */
     public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        // Calcular diferença total em centímetros
-        $width_diff = max(0, $width - $base_width);
-        $height_diff = max(0, $height - $base_height);
-        $length_diff = max(0, $length - $base_length);
+        // Verificar método de cálculo
+        $calculation_method = get_option('cdp_calculation_method', 'linear');
         
-        $total_diff_cm = $width_diff + $height_diff + $length_diff;
-        
-        // Calcular acréscimo
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
-        
-        return $base_price + $price_increase;
+        if ($calculation_method === 'volume') {
+            // Cálculo baseado em fator de volume
+            $volume_original = $base_width * $base_height * $base_length;
+            $volume_novo = $width * $height * $length;
+            
+            // Evitar divisão por zero
+            if ($volume_original <= 0) {
+                return $base_price;
+            }
+            
+            $fator = $volume_novo / $volume_original;
+            $preco_novo = $base_price * $fator;
+            
+            return $preco_novo;
+        } else {
+            // Cálculo linear (padrão)
+            $width_diff = max(0, $width - $base_width);
+            $height_diff = max(0, $height - $base_height);
+            $length_diff = max(0, $length - $base_length);
+            
+            $total_diff_cm = $width_diff + $height_diff + $length_diff;
+            $price_increase = $price_per_cm * $total_diff_cm;
+            
+            return $base_price + $price_increase;
+        }
     }
     
     /**
@@ -405,6 +445,7 @@ class CDP_Frontend {
                 'ajax_url' => admin_url('admin-ajax.php'),
                 'nonce' => wp_create_nonce('cdp_calculate_price'),
                 'pluginUrl' => SPS_PLUGIN_URL,
+                'calculation_method' => get_option('cdp_calculation_method', 'linear'),
                 'messages' => array(
                     'calculating' => __('Calculando...', 'stackable-product-shipping'),
                     'error' => __('Erro ao calcular preço', 'stackable-product-shipping')

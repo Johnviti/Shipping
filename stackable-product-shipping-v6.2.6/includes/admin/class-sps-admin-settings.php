@@ -23,6 +23,11 @@ class SPS_Admin_Settings {
         $enable_in_cart = get_option('sps_enable_in_cart', 'yes');
         $enable_in_checkout = get_option('sps_enable_in_checkout', 'yes');
         
+        // Configurações de dimensões personalizadas
+        $cdp_price_per_cm = get_option('cdp_price_per_cm', '0.50');
+        $cdp_density_per_cm3 = get_option('cdp_density_per_cm3', '600');
+        $cdp_calculation_method = get_option('cdp_calculation_method', 'linear');
+        
         ?>
         <div class="wrap">
             <h1>Configurações de Empilhamento</h1>
@@ -84,6 +89,36 @@ class SPS_Admin_Settings {
                                 <option value="no" <?php selected($enable_in_checkout, 'no'); ?>>Não</option>
                             </select>
                             <p class="description">Habilitar empilhamento de produtos no cálculo de frete do checkout.</p>
+                        </td>
+                    </tr>
+                </table>
+                
+                <h2>Configurações de Dimensões Personalizadas</h2>
+                <table class="form-table">
+                    <tr>
+                        <th scope="row"><label for="cdp_price_per_cm">Preço por cm (R$)</label></th>
+                        <td>
+                            <input type="number" name="cdp_price_per_cm" id="cdp_price_per_cm" value="<?php echo esc_attr($cdp_price_per_cm); ?>" step="0.01" min="0" class="regular-text">
+                            <p class="description">Valor em reais cobrado por cada centímetro extra nas dimensões personalizadas. Exemplo: R$ 0,50 por cm.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="cdp_density_per_cm3">Densidade do Material (g/cm³)</label></th>
+                        <td>
+                            <input type="number" name="cdp_density_per_cm3" id="cdp_density_per_cm3" value="<?php echo esc_attr($cdp_density_per_cm3); ?>" step="1" min="1" class="regular-text">
+                            <p class="description">Densidade do material em gramas por centímetro cúbico. Usado para calcular o peso das dimensões extras. Exemplos: Madeira = 600 g/cm³, Plástico = 950 g/cm³.</p>
+                        </td>
+                    </tr>
+                    <tr>
+                        <th scope="row"><label for="cdp_calculation_method">Método de Cálculo de Preço</label></th>
+                        <td>
+                            <select name="cdp_calculation_method" id="cdp_calculation_method">
+                                <option value="linear" <?php selected($cdp_calculation_method, 'linear'); ?>>Linear (soma das diferenças)</option>
+                                <option value="volume" <?php selected($cdp_calculation_method, 'volume'); ?>>Volume (diferença de volume)</option>
+                            </select>
+                            <p class="description">Escolha como calcular o preço extra:<br>
+                            • <strong>Linear:</strong> Soma as diferenças de largura + altura + comprimento (atual)<br>
+                            • <strong>Volume:</strong> Calcula baseado na diferença de volume (mais preciso para produtos 3D)</p>
                         </td>
                     </tr>
                 </table>
@@ -209,6 +244,11 @@ class SPS_Admin_Settings {
         $enable_in_cart = sanitize_text_field($_POST['sps_enable_in_cart']);
         $enable_in_checkout = sanitize_text_field($_POST['sps_enable_in_checkout']);
         
+        // Configurações de dimensões personalizadas
+        $cdp_price_per_cm = floatval($_POST['cdp_price_per_cm']);
+        $cdp_density_per_cm3 = floatval($_POST['cdp_density_per_cm3']);
+        $cdp_calculation_method = sanitize_text_field($_POST['cdp_calculation_method']);
+        
         update_option('sps_api_token', $api_token);
         update_option('sps_frenet_token', $frenet_token);
         update_option('sps_cargo_types', $cargo_types);
@@ -216,6 +256,11 @@ class SPS_Admin_Settings {
         update_option('sps_test_destination_cep', $test_destination_cep);
         update_option('sps_enable_in_cart', $enable_in_cart);
         update_option('sps_enable_in_checkout', $enable_in_checkout);
+        
+        // Salvar configurações de dimensões personalizadas
+        update_option('cdp_price_per_cm', $cdp_price_per_cm);
+        update_option('cdp_density_per_cm3', $cdp_density_per_cm3);
+        update_option('cdp_calculation_method', $cdp_calculation_method);
         
         echo '<div class="notice notice-success is-dismissible"><p>Configurações salvas com sucesso!</p></div>';
     }

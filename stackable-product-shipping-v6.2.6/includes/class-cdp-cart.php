@@ -96,9 +96,6 @@ class CDP_Cart {
                     'width' => $width,
                     'height' => $height,
                     'length' => $length,
-                    'base_width' => $product_data->base_width,
-                    'base_height' => $product_data->base_height,
-                    'base_length' => $product_data->base_length,
                     'price_per_cm' => $product_data->price_per_cm,
                     'base_price' => $base_price,
                     'confirmed' => true,
@@ -135,14 +132,21 @@ class CDP_Cart {
                 $cart_item['data']->get_id() === $product->get_id()) {
                 
                 $dimensions = $cart_item['cdp_custom_dimensions'];
+                
+                // Obter dimensões base do produto WooCommerce
+                $wc_product = wc_get_product($cart_item['product_id']);
+                $base_width = $wc_product ? (float) $wc_product->get_width() : 0;
+                $base_height = $wc_product ? (float) $wc_product->get_height() : 0;
+                $base_length = $wc_product ? (float) $wc_product->get_length() : 0;
+                
                 return $this->calculate_custom_price(
                     $dimensions['base_price'],
                     $dimensions['width'],
                     $dimensions['height'],
                     $dimensions['length'],
-                    $dimensions['base_width'],
-                    $dimensions['base_height'],
-                    $dimensions['base_length'],
+                    $base_width,
+                    $base_height,
+                    $base_length,
                     $dimensions['price_per_cm']
                 );
             }
@@ -158,14 +162,20 @@ class CDP_Cart {
         if (isset($cart_item['cdp_custom_dimensions'])) {
             $dimensions = $cart_item['cdp_custom_dimensions'];
             
+            // Obter dimensões base do produto WooCommerce
+            $product = wc_get_product($cart_item['product_id']);
+            $base_width = $product ? (float) $product->get_width() : 0;
+            $base_height = $product ? (float) $product->get_height() : 0;
+            $base_length = $product ? (float) $product->get_length() : 0;
+            
             $custom_price = $this->calculate_custom_price(
                 $dimensions['base_price'],
                 $dimensions['width'],
                 $dimensions['height'],
                 $dimensions['length'],
-                $dimensions['base_width'],
-                $dimensions['base_height'],
-                $dimensions['base_length'],
+                $base_width,
+                $base_height,
+                $base_length,
                 $dimensions['price_per_cm']
             );
             
@@ -182,14 +192,20 @@ class CDP_Cart {
         if (isset($cart_item['cdp_custom_dimensions'])) {
             $dimensions = $cart_item['cdp_custom_dimensions'];
             
+            // Obter dimensões base do produto WooCommerce
+            $product = wc_get_product($cart_item['product_id']);
+            $base_width = $product ? (float) $product->get_width() : 0;
+            $base_height = $product ? (float) $product->get_height() : 0;
+            $base_length = $product ? (float) $product->get_length() : 0;
+            
             $custom_price = $this->calculate_custom_price(
                 $dimensions['base_price'],
                 $dimensions['width'],
                 $dimensions['height'],
                 $dimensions['length'],
-                $dimensions['base_width'],
-                $dimensions['base_height'],
-                $dimensions['base_length'],
+                $base_width,
+                $base_height,
+                $base_length,
                 $dimensions['price_per_cm']
             );
             
@@ -217,14 +233,20 @@ class CDP_Cart {
                 $product = $cart_item['data'];
                 $dimensions = $cart_item['cdp_custom_dimensions'];
                 
+                // Obter dimensões base do produto WooCommerce
+                $wc_product = wc_get_product($cart_item['product_id']);
+                $base_width = $wc_product ? (float) $wc_product->get_width() : 0;
+                $base_height = $wc_product ? (float) $wc_product->get_height() : 0;
+                $base_length = $wc_product ? (float) $wc_product->get_length() : 0;
+                
                 $new_price = $this->calculate_custom_price(
                     $dimensions['base_price'],
                     $dimensions['width'],
                     $dimensions['height'],
                     $dimensions['length'],
-                    $dimensions['base_width'],
-                    $dimensions['base_height'],
-                    $dimensions['base_length'],
+                    $base_width,
+                    $base_height,
+                    $base_length,
                     $dimensions['price_per_cm']
                 );
                 
@@ -252,14 +274,20 @@ class CDP_Cart {
             );
             
             // Mostrar diferença de preço
+            // Obter dimensões base do produto WooCommerce
+            $product = wc_get_product($cart_item['product_id']);
+            $base_width = $product ? (float) $product->get_width() : 0;
+            $base_height = $product ? (float) $product->get_height() : 0;
+            $base_length = $product ? (float) $product->get_length() : 0;
+            
             $custom_price = $this->calculate_custom_price(
                 $dimensions['base_price'],
                 $dimensions['width'],
                 $dimensions['height'],
                 $dimensions['length'],
-                $dimensions['base_width'],
-                $dimensions['base_height'],
-                $dimensions['base_length'],
+                $base_width,
+                $base_height,
+                $base_length,
                 $dimensions['price_per_cm']
             );
             
@@ -330,12 +358,18 @@ class CDP_Cart {
         $cart->set_session();
         
         // Calcular novo preço
+        // Obter dimensões base do produto WooCommerce
+        $product = wc_get_product($cart_item['product_id']);
+        $base_width = $product ? (float) $product->get_width() : 0;
+        $base_height = $product ? (float) $product->get_height() : 0;
+        $base_length = $product ? (float) $product->get_length() : 0;
+        
         $new_price = $this->calculate_custom_price(
             $cart_item['cdp_custom_dimensions']['base_price'],
             $width, $height, $length,
-            $cart_item['cdp_custom_dimensions']['base_width'],
-            $cart_item['cdp_custom_dimensions']['base_height'],
-            $cart_item['cdp_custom_dimensions']['base_length'],
+            $base_width,
+            $base_height,
+            $base_length,
             $cart_item['cdp_custom_dimensions']['price_per_cm']
         );
         
@@ -381,10 +415,32 @@ class CDP_Cart {
         
         if (false === $data) {
             $table_name = $wpdb->prefix . 'cdp_product_dimensions';
-            $data = $wpdb->get_row($wpdb->prepare(
+            $table_data = $wpdb->get_row($wpdb->prepare(
                 "SELECT * FROM $table_name WHERE product_id = %d",
                 $product_id
             ));
+            
+            // Obter produto WooCommerce para dimensões base
+            $product = wc_get_product($product_id);
+            
+            if ($table_data && $product) {
+                // Combinar dados da tabela com dimensões base do produto
+                $data = (object) array(
+                    'product_id' => $table_data->product_id,
+                    'base_width' => (float) $product->get_width(),
+                    'base_height' => (float) $product->get_height(),
+                    'base_length' => (float) $product->get_length(),
+                    'max_width' => $table_data->max_width,
+                    'max_height' => $table_data->max_height,
+                    'max_length' => $table_data->max_length,
+                    'max_weight' => $table_data->max_weight,
+                    'price_per_cm' => $table_data->price_per_cm,
+                    'density_per_cm3' => $table_data->density_per_cm3,
+                    'enabled' => (bool) $table_data->enabled
+                );
+            } else {
+                $data = null;
+            }
             
             wp_cache_set($cache_key, $data, 'cdp_products', 3600);
         }
@@ -396,13 +452,33 @@ class CDP_Cart {
      * Calcular preço personalizado
      */
     public function calculate_custom_price($base_price, $width, $height, $length, $base_width, $base_height, $base_length, $price_per_cm) {
-        $width_diff = max(0, $width - $base_width);
-        $height_diff = max(0, $height - $base_height);
-        $length_diff = max(0, $length - $base_length);
+        // Verificar método de cálculo
+        $calculation_method = get_option('cdp_calculation_method', 'linear');
         
-        $total_diff_cm = $width_diff + $height_diff + $length_diff;
-        $price_increase = ($base_price * $price_per_cm / 100) * $total_diff_cm;
-        
-        return $base_price + $price_increase;
+        if ($calculation_method === 'volume') {
+            // Cálculo baseado em fator de volume
+            $volume_original = $base_width * $base_height * $base_length;
+            $volume_novo = $width * $height * $length;
+            
+            // Evitar divisão por zero
+            if ($volume_original <= 0) {
+                return $base_price;
+            }
+            
+            $fator = $volume_novo / $volume_original;
+            $preco_novo = $base_price * $fator;
+            
+            return $preco_novo;
+        } else {
+            // Cálculo linear (padrão)
+            $width_diff = max(0, $width - $base_width);
+            $height_diff = max(0, $height - $base_height);
+            $length_diff = max(0, $length - $base_length);
+            
+            $total_diff_cm = $width_diff + $height_diff + $length_diff;
+            $price_increase = $price_per_cm * $total_diff_cm;
+            
+            return $base_price + $price_increase;
+        }
     }
 }

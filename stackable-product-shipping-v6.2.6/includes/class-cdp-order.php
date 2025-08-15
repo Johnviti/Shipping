@@ -95,12 +95,25 @@ class CDP_Order {
                                 <td><?php echo number_format($custom_dimensions['height'], 2, ',', '.'); ?></td>
                                 <td><?php echo number_format($custom_dimensions['length'], 2, ',', '.'); ?></td>
                                 <td>
-                                    <?php echo sprintf(
-                                        '%s x %s x %s',
-                                        number_format($custom_dimensions['base_width'], 2, ',', '.'),
-                                        number_format($custom_dimensions['base_height'], 2, ',', '.'),
-                                        number_format($custom_dimensions['base_length'], 2, ',', '.')
-                                    ); ?>
+                                    <?php 
+                                    // Obter dimensões base do produto WooCommerce
+                                    $product = $item->get_product();
+                                    if ($product) {
+                                        echo sprintf(
+                                            '%s x %s x %s',
+                                            number_format((float) $product->get_width(), 2, ',', '.'),
+                                            number_format((float) $product->get_height(), 2, ',', '.'),
+                                            number_format((float) $product->get_length(), 2, ',', '.')
+                                        );
+                                    } else {
+                                        echo sprintf(
+                                            '%s x %s x %s',
+                                            number_format($custom_dimensions['base_width'], 2, ',', '.'),
+                                            number_format($custom_dimensions['base_height'], 2, ',', '.'),
+                                            number_format($custom_dimensions['base_length'], 2, ',', '.')
+                                        );
+                                    }
+                                    ?>
                                 </td>
                             </tr>
                         <?php endif; 

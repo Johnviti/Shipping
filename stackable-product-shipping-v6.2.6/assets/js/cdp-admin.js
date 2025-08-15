@@ -3,19 +3,19 @@ jQuery(document).ready(function($) {
     
     // Elementos
     const $enabledCheckbox = $('input[name="cdp_enabled"]');
-    const $dimensionFields = $('.cdp-field-group');
-    const $baseDimensionInputs = $('#cdp_base_width, #cdp_base_height, #cdp_base_length');
+    const $dimensionFields = $('.cdp-field-group:not(:first)');
     const $maxDimensionInputs = $('#cdp_max_width, #cdp_max_height, #cdp_max_length');
     const $pricePerCmInput = $('#cdp_price_per_cm');
+    const $densityInput = $('#cdp_density_per_cm3');
     
     // Inicializar
     toggleDimensionFields();
     
     // Event listeners
     $enabledCheckbox.on('change', toggleDimensionFields);
-    $baseDimensionInputs.on('input', validateBaseDimensions);
     $maxDimensionInputs.on('input', validateMaxDimensions);
     $pricePerCmInput.on('input', validatePricePerCm);
+    $densityInput.on('input', validateDensity);
     
     /**
      * Alternar visibilidade dos campos de dimensão
@@ -28,33 +28,7 @@ jQuery(document).ready(function($) {
         }
     }
     
-    /**
-     * Validar dimensões base
-     */
-    function validateBaseDimensions() {
-        $baseDimensionInputs.each(function() {
-            const $input = $(this);
-            const value = parseFloat($input.val()) || 0;
-            
-            if (value <= 0) {
-                $input.addClass('error');
-                showFieldError($input, 'Valor deve ser maior que zero');
-            } else {
-                $input.removeClass('error');
-                hideFieldError($input);
-                
-                // Atualizar valor mínimo do campo máximo correspondente
-                const fieldName = $input.attr('name').replace('cdp_base_', '');
-                const $maxField = $('#cdp_max_' + fieldName);
-                $maxField.attr('min', value);
-                
-                // Validar se o valor máximo ainda é válido
-                if (parseFloat($maxField.val()) < value) {
-                    $maxField.val(value);
-                }
-            }
-        });
-    }
+
     
     /**
      * Validar dimensões máximas
@@ -63,13 +37,10 @@ jQuery(document).ready(function($) {
         $maxDimensionInputs.each(function() {
             const $input = $(this);
             const value = parseFloat($input.val()) || 0;
-            const fieldName = $input.attr('name').replace('cdp_max_', '');
-            const $baseField = $('#cdp_base_' + fieldName);
-            const baseValue = parseFloat($baseField.val()) || 0;
             
-            if (value < baseValue) {
+            if (value <= 0) {
                 $input.addClass('error');
-                showFieldError($input, 'Valor deve ser maior ou igual à dimensão base');
+                showFieldError($input, 'Valor deve ser maior que zero');
             } else {
                 $input.removeClass('error');
                 hideFieldError($input);
@@ -86,12 +57,24 @@ jQuery(document).ready(function($) {
         if (value < 0) {
             $pricePerCmInput.addClass('error');
             showFieldError($pricePerCmInput, 'Valor não pode ser negativo');
-        } else if (value > 100) {
-            $pricePerCmInput.addClass('error');
-            showFieldError($pricePerCmInput, 'Valor não pode ser maior que 100%');
         } else {
             $pricePerCmInput.removeClass('error');
             hideFieldError($pricePerCmInput);
+        }
+    }
+    
+    /**
+     * Validar densidade por cm³
+     */
+    function validateDensity() {
+        const value = parseFloat($densityInput.val()) || 0;
+        
+        if (value < 0) {
+            $densityInput.addClass('error');
+            showFieldError($densityInput, 'Valor não pode ser negativo');
+        } else {
+            $densityInput.removeClass('error');
+            hideFieldError($densityInput);
         }
     }
     
