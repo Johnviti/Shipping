@@ -245,7 +245,7 @@ class CDP_Multi_Packages {
                 </div>
                 
                 <div class="cdp-package-field cdp-package-description">
-                    <label>Descrição Detalhada (aparecerá na nota do pedido)</label>
+                    <label>Descrição Detalhada</label>
                     <textarea name="cdp_package_descriptions[<?php echo $index; ?>]" 
                               rows="3" 
                               placeholder="Descrição detalhada do pacote que aparecerá nas informações do pedido..."><?php echo esc_textarea($description); ?></textarea>
@@ -482,6 +482,75 @@ class CDP_Multi_Packages {
         }
         
         return $shipping_packages;
+    }
+    
+    /**
+     * Verificar se um produto é composto
+     */
+    public static function is_composed_product($product_id) {
+        return get_post_meta($product_id, '_sps_product_type', true) === 'composed';
+    }
+    
+    /**
+     * Obter pacotes para produto composto incluindo pacotes de excedente
+     */
+    public static function get_composed_packages_for_shipping($product_id, $quantity = 1, $excess_packages = array()) {
+        $packages = array();
+        
+        // Verificar se é produto composto
+        if (!self::is_composed_product($product_id)) {
+            return self::get_packages_for_shipping($product_id, $quantity);
+        }
+        
+        // Obter dados do produto composto
+        $children = get_post_meta($product_id, '_sps_composed_children', true);
+        $composition_policy = get_post_meta($product_id, '_sps_composition_policy', true);
+        
+        if (empty($children)) {
+            return array();
+        }
+        
+        // Calcular dimensões base do produto composto
+        if (class_exists('SPS_Composed_Product')) {
+            $composed_dimensions = SPS_Composed_Product::calculate_composed_dimensions($children, $composition_policy);
+            
+            // Pacote principal do produto composto
+            $packages[] = array(
+                'name' => 'Produto Composto',
+                'description' => 'Pacote principal do produto composto',
+                'width' => $composed_dimensions['width'],
+                'height' => $composed_dimensions['height'],
+                'length' => $composed_dimensions['length'],
+                'weight' => $composed_dimensions['weight'] * $quantity,
+                'quantity' => $quantity,
+                'type' => 'composed_main'
+            );
+        }
+        
+        // Adicionar pacotes de excedente se existirem
+        if (!empty($excess_packages)) {
+            foreach ($excess_packages as $index => $excess_package) {
+                $packages[] = array(
+                    'name' => 'Pacote Excedente ' . ($index + 1),
+                    'description' => 'Pacote de excedente CDP para produto composto',
+                    'width' => $excess_package['width'],
+                    'height' => $excess_package['height'],
+                    'length' => $excess_package['length'],
+                    'weight' => isset($excess_package['weight']) ? $excess_package['weight'] : 0,
+                    'quantity' => $quantity,
+                    'type' => 'composed_excess'
+                );
+            }
+        }
+        
+        return $packages;
+    }
+    
+    /**
+     * Verificar se um produto composto tem pacotes de excedente
+     */
+    public static function has_excess_packages($cart_item) {
+        return isset($cart_item['cdp_excess_packages']) && !empty($cart_item['cdp_excess_packages']);
     }
 }
 
