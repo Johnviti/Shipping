@@ -24,6 +24,7 @@ define('SPS_PLUGIN_URL', plugin_dir_url(__FILE__));
 // Include SPS classes
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-install.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-ajax.php';
+require_once SPS_PLUGIN_DIR . 'includes/class-sps-cart.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-groups-table.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-admin.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-shipping-matcher.php';
@@ -94,6 +95,7 @@ class SPS_Main {
     public function init() {
         // Inicializar classes SPS
         new SPS_Ajax();
+        SPS_Cart::init(); // Inicializar hooks do carrinho para dimensões personalizadas
         
         // Inicializar classes CDP (Custom Dimensions Pricing)
         CDP_Admin::get_instance();

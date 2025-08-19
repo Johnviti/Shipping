@@ -406,6 +406,86 @@ class SPS_Composed_Product {
     }
     
     /**
+     * Get derived dimensions for composed product (alias for calculate_derived_dimensions)
+     * 
+     * @param int $product_id Product ID
+     * @return array|false Array with dimensions or false if not a composed product
+     */
+    public static function get_derived_dimensions($product_id) {
+        if (!self::is_composed_product($product_id)) {
+            return false;
+        }
+        
+        return self::calculate_derived_dimensions($product_id);
+    }
+    
+    /**
+     * Calculate composed dimensions based on children and composition policy
+     * 
+     * @param array $children Array of child products with quantities
+     * @param string $composition_policy Policy for calculating dimensions ('sum_volumes' or 'bounding_box')
+     * @return array Array with weight, width, height, length, and volume
+     */
+    public static function calculate_composed_dimensions($children, $composition_policy = 'sum_volumes') {
+        if (empty($children)) {
+            return array(
+                'weight' => 0,
+                'width' => 0,
+                'height' => 0,
+                'length' => 0,
+                'volume' => 0
+            );
+        }
+        
+        $total_weight = 0;
+        $total_volume = 0;
+        $max_width = 0;
+        $max_length = 0;
+        $sum_height = 0;
+        
+        foreach ($children as $child) {
+            $child_product = wc_get_product($child['product_id']);
+            if (!$child_product) {
+                continue;
+            }
+            
+            $quantity = $child['quantity'];
+            $weight = (float) $child_product->get_weight() * $quantity;
+            $width = (float) $child_product->get_width();
+            $height = (float) $child_product->get_height();
+            $length = (float) $child_product->get_length();
+            
+            $total_weight += $weight;
+            $total_volume += ($width * $height * $length * $quantity);
+            
+            // For bounding box calculation
+            $max_width = max($max_width, $width);
+            $max_length = max($max_length, $length);
+            $sum_height += ($height * $quantity);
+        }
+        
+        if ($composition_policy === 'bounding_box') {
+            return array(
+                'weight' => $total_weight,
+                'width' => $max_width,
+                'height' => $sum_height,
+                'length' => $max_length,
+                'volume' => $max_width * $sum_height * $max_length
+            );
+        } else {
+            // sum_volumes - use cubic root for estimated dimensions
+            $estimated_side = $total_volume > 0 ? pow($total_volume, 1/3) : 0;
+            return array(
+                'weight' => $total_weight,
+                'width' => $estimated_side,
+                'height' => $estimated_side,
+                'length' => $estimated_side,
+                'volume' => $total_volume
+            );
+        }
+    }
+    
+    /**
      * Add cart item data for composed products
      */
     public static function add_cart_item_data($cart_item_data, $product_id, $variation_id) {
@@ -571,6 +651,16 @@ class SPS_Composed_Product {
             'package_count' => $package_count,
             'excess_per_unit' => $excess_volume_per_unit
         );
+    }
+    
+    /**
+     * Check if a cart item has excess packages
+     * 
+     * @param array $cart_item Cart item data
+     * @return bool True if has excess packages, false otherwise
+     */
+    public static function has_excess_packages($cart_item) {
+        return isset($cart_item['cdp_excess_packages']) && !empty($cart_item['cdp_excess_packages']);
     }
     
     /**

@@ -25,11 +25,32 @@ class SPS_Product_Meta_Box {
         $product_id = $post->ID;
         $saved_configs = get_option('sps_stackable_products', array());
         
-        $is_stackable = isset($saved_configs[$product_id]['is_stackable']) ? $saved_configs[$product_id]['is_stackable'] : false;
-        $max_quantity = isset($saved_configs[$product_id]['max_quantity']) ? $saved_configs[$product_id]['max_quantity'] : 0;
-        $height_increment = isset($saved_configs[$product_id]['height_increment']) ? $saved_configs[$product_id]['height_increment'] : 0;
-        $length_increment = isset($saved_configs[$product_id]['length_increment']) ? $saved_configs[$product_id]['length_increment'] : 0;
-        $width_increment = isset($saved_configs[$product_id]['width_increment']) ? $saved_configs[$product_id]['width_increment'] : 0;
+        // Get values from saved configs or individual meta fields as fallback
+        $is_stackable = isset($saved_configs[$product_id]['is_stackable']) ? 
+            $saved_configs[$product_id]['is_stackable'] : 
+            (bool) get_post_meta($product_id, '_sps_stackable', true);
+            
+        $max_quantity = isset($saved_configs[$product_id]['max_quantity']) ? 
+            $saved_configs[$product_id]['max_quantity'] : 
+            (int) get_post_meta($product_id, '_sps_max_quantity', true);
+            
+        // Debug: Log current values
+        error_log('SPS Render - Product ID: ' . $product_id);
+        error_log('SPS Render - Saved configs: ' . print_r($saved_configs, true));
+        error_log('SPS Render - is_stackable: ' . ($is_stackable ? 'true' : 'false'));
+        error_log('SPS Render - Meta _sps_stackable: ' . get_post_meta($product_id, '_sps_stackable', true));
+            
+        $height_increment = isset($saved_configs[$product_id]['height_increment']) ? 
+            $saved_configs[$product_id]['height_increment'] : 
+            (float) get_post_meta($product_id, '_sps_height_increment', true);
+            
+        $length_increment = isset($saved_configs[$product_id]['length_increment']) ? 
+            $saved_configs[$product_id]['length_increment'] : 
+            (float) get_post_meta($product_id, '_sps_length_increment', true);
+            
+        $width_increment = isset($saved_configs[$product_id]['width_increment']) ? 
+            $saved_configs[$product_id]['width_increment'] : 
+            (float) get_post_meta($product_id, '_sps_width_increment', true);
         
         // Get product data for display
         $product = wc_get_product($product_id);
@@ -365,16 +386,24 @@ class SPS_Product_Meta_Box {
      * Save product meta
      */
     public static function save_meta($product_id) {
+        // Debug: Log function call
+        error_log('SPS Save - Function called for product ID: ' . $product_id);
+        error_log('SPS Save - POST data: ' . print_r($_POST, true));
+        
         // Check nonce
         if (!isset($_POST['sps_product_meta_nonce']) || 
             !wp_verify_nonce($_POST['sps_product_meta_nonce'], 'sps_save_product_meta')) {
+            error_log('SPS Save - Nonce verification failed');
             return;
         }
         
         // Check permissions
         if (!current_user_can('edit_product', $product_id)) {
+            error_log('SPS Save - Permission denied');
             return;
         }
+        
+        error_log('SPS Save - Nonce and permissions OK');
         
         // Get current configurations
         $saved_configs = get_option('sps_stackable_products', array());
