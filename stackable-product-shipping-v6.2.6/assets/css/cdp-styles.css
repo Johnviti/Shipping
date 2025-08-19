@@ -349,6 +349,121 @@
     text-decoration: none;
 }
 
+/* Estilos para produtos compostos no carrinho */
+.sps-children-list {
+    background: #f8f9fa;
+    border-left: 3px solid #007cba;
+    padding: 8px 12px;
+    margin: 4px 0;
+    border-radius: 4px;
+    font-size: 13px;
+}
+
+.sps-child-product {
+    display: inline-block;
+    background: #e3f2fd;
+    color: #1565c0;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+    margin: 1px 0;
+}
+
+.sps-dimensions {
+    font-family: 'Courier New', monospace;
+    background: #fff3e0;
+    color: #e65100;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    border: 1px solid #ffcc02;
+}
+
+.sps-weight {
+    font-family: 'Courier New', monospace;
+    background: #e8f5e8;
+    color: #2e7d32;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 600;
+    border: 1px solid #4caf50;
+}
+
+.sps-excess-packages {
+    background: #fff3e0;
+    border: 1px solid #ff9800;
+    border-radius: 6px;
+    padding: 10px;
+    margin: 4px 0;
+}
+
+.sps-excess-count {
+    color: #e65100;
+    font-weight: 600;
+    font-size: 14px;
+}
+
+.sps-excess-details {
+    color: #bf360c;
+    font-style: italic;
+    opacity: 0.8;
+}
+
+.sps-composition-policy {
+    background: #f3e5f5;
+    color: #7b1fa2;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-weight: 500;
+    border: 1px solid #9c27b0;
+    font-size: 12px;
+}
+
+/* Melhorias na exibição de meta dados do carrinho */
+.woocommerce-cart-form .cart_item .product-name dl {
+    margin: 8px 0;
+}
+
+.woocommerce-cart-form .cart_item .product-name dt {
+    font-weight: 600;
+    color: #333;
+    margin-bottom: 4px;
+    font-size: 13px;
+}
+
+.woocommerce-cart-form .cart_item .product-name dd {
+    margin: 0 0 8px 0;
+    padding-left: 0;
+}
+
+/* Ícones para diferentes tipos de informação */
+.sps-children-list::before {
+    content: "📦 ";
+    margin-right: 4px;
+}
+
+.sps-dimensions::before {
+    content: "📏 ";
+    margin-right: 4px;
+}
+
+.sps-weight::before {
+    content: "⚖️ ";
+    margin-right: 4px;
+}
+
+.sps-excess-packages::before {
+    content: "📋 ";
+    margin-right: 4px;
+    float: left;
+    margin-top: 2px;
+}
+
+.sps-composition-policy::before {
+    content: "🔧 ";
+    margin-right: 4px;
+}
+
 /* Responsividade */
 @media (max-width: 768px) {
     .cdp-dimension-fields {
@@ -359,6 +474,19 @@
     .cdp-dimension-selector {
         padding: 15px;
         margin: 15px 0;
+    }
+    
+    .sps-children-list,
+    .sps-excess-packages {
+        padding: 6px 8px;
+        font-size: 12px;
+    }
+    
+    .sps-dimensions,
+    .sps-weight,
+    .sps-composition-policy {
+        padding: 3px 6px;
+        font-size: 11px;
     }
     
     .cdp-price-value {

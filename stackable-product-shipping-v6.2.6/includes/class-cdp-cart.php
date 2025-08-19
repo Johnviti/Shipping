@@ -70,6 +70,15 @@ class CDP_Cart {
                 wc_add_notice(__('As dimensões especificadas estão fora dos limites permitidos.', 'stackable-product-shipping'), 'error');
                 return false;
             }
+            
+            // Validação específica para produtos compostos
+            if ($this->is_composed_product($product_id)) {
+                $volume_validation = $this->validate_composed_product_volume($product_id, $width, $height, $length);
+                if (!$volume_validation['valid']) {
+                    wc_add_notice($volume_validation['message'], 'error');
+                    return false;
+                }
+            }
         }
         
         return $passed;
@@ -104,6 +113,17 @@ class CDP_Cart {
                 
                 // Hash único para evitar agrupamento
                 $cart_item_data['cdp_unique_key'] = md5($product_id . $width . $height . $length . microtime());
+                
+                // Para produtos compostos, calcular pacotes de excedente
+                if ($this->is_composed_product($product_id)) {
+                    $excess_packages = $this->calculate_excess_packages($product_id, $width, $height, $length);
+                    if (!empty($excess_packages)) {
+                        $cart_item_data['cdp_excess_packages'] = $excess_packages;
+                    }
+                    
+                    // Marcar como produto composto
+                    $cart_item_data['cdp_composed_product'] = true;
+                }
                 
                 error_log('CDP Cart: Dimensões personalizadas adicionadas - Product ID: ' . $product_id . ', Dimensões: ' . $width . 'x' . $height . 'x' . $length);
             }
@@ -445,6 +465,83 @@ class CDP_Cart {
         }
         
         return $data;
+    }
+    
+    /**
+     * Verificar se é um produto composto
+     */
+    public function is_composed_product($product_id) {
+        return get_post_meta($product_id, '_sps_product_type', true) === 'composed';
+    }
+    
+    /**
+     * Validar volume de produto composto
+     */
+    public function validate_composed_product_volume($product_id, $width, $height, $length) {
+        $children = get_post_meta($product_id, '_sps_composed_children', true);
+        if (empty($children)) {
+            return array('valid' => false, 'message' => __('Produto composto sem filhos configurados', 'stackable-product-shipping'));
+        }
+        
+        // Calcular volume dos filhos
+        $children_volume = 0;
+        foreach ($children as $child) {
+            $child_product = wc_get_product($child['product_id']);
+            if ($child_product) {
+                $child_width = $child_product->get_width() ?: 0;
+                $child_height = $child_product->get_height() ?: 0;
+                $child_length = $child_product->get_length() ?: 0;
+                $child_volume = $child_width * $child_height * $child_length * $child['quantity'];
+                $children_volume += $child_volume;
+            }
+        }
+        
+        // Calcular volume CDP
+        $cdp_volume = $width * $height * $length;
+        
+        // Verificar se o volume CDP comporta os filhos
+        if ($cdp_volume < $children_volume) {
+            return array(
+                'valid' => false, 
+                'message' => __('As dimensões personalizadas não comportam os itens do produto composto.', 'stackable-product-shipping')
+            );
+        }
+        
+        return array('valid' => true, 'children_volume' => $children_volume, 'cdp_volume' => $cdp_volume);
+    }
+    
+    /**
+     * Calcular pacotes de excedente para produto composto
+     */
+    public function calculate_excess_packages($product_id, $width, $height, $length) {
+        $validation = $this->validate_composed_product_volume($product_id, $width, $height, $length);
+        
+        if (!$validation['valid']) {
+            return array();
+        }
+        
+        $excess_volume = $validation['cdp_volume'] - $validation['children_volume'];
+        
+        if ($excess_volume <= 0) {
+            return array();
+        }
+        
+        // Calcular quantos pacotes adicionais são necessários
+        $package_volume = $width * $height * $length;
+        $additional_packages = ceil($excess_volume / $package_volume);
+        
+        $packages = array();
+        for ($i = 0; $i < $additional_packages; $i++) {
+            $packages[] = array(
+                'width' => $width,
+                'height' => $height,
+                'length' => $length,
+                'weight' => 0, // Pacotes de excedente não têm peso
+                'type' => 'excess'
+            );
+        }
+        
+        return $packages;
     }
     
     /**
