@@ -70,6 +70,7 @@ class CDP_Multi_Packages {
             id mediumint(9) NOT NULL AUTO_INCREMENT,
             product_id bigint(20) NOT NULL,
             package_name varchar(255) NOT NULL DEFAULT 'Pacote',
+            description TEXT NULL,
             package_order int(3) NOT NULL DEFAULT 1,
             width decimal(10,2) NOT NULL DEFAULT 0,
             height decimal(10,2) NOT NULL DEFAULT 0,
@@ -380,7 +381,7 @@ class CDP_Multi_Packages {
                             'weight' => $weight,
                             'enabled' => 1
                         ),
-                        array('%d', '%s', '%d', '%f', '%f', '%f', '%f', '%d')
+                        array('%d', '%s', '%s', '%d', '%f', '%f', '%f', '%f', '%d')
                     );
                     
                     if ($result === false) {

@@ -98,7 +98,7 @@ class SPS_Product_Meta_Box {
                                        min="1" 
                                        max="999"
                                        step="1" 
-                                       class="small-text" 
+                                       class="small-text sps-conditional-required" 
                                        placeholder="10" />
                                 <span class="description">unidades que podem ser empilhadas juntas</span>
                             </td>
@@ -291,19 +291,43 @@ class SPS_Product_Meta_Box {
         ?>
         <script>
         jQuery(document).ready(function($) {
+            console.log('SPS: JavaScript loaded');
+            
+            // Debug: Log form submission
+            $('#post').on('submit', function() {
+                console.log('SPS: Form being submitted');
+                console.log('SPS: Stackable value:', $('input[name="sps_is_stackable"]:checked').val());
+                console.log('SPS: Max quantity:', $('#sps_max_quantity').val());
+                console.log('SPS: Nonce:', $('input[name="sps_product_meta_nonce"]').val());
+            });
+            
             // Toggle stackable options
             $('input[name="sps_is_stackable"]').on('change', function() {
                 var isStackable = $(this).val() === '1' && $(this).is(':checked');
                 var $options = $('.sps-stackable-options');
+                var $maxQuantityField = $('#sps_max_quantity');
                 
                 if (isStackable) {
                     $options.slideDown(300);
+                    // Adicionar validação required quando empilhamento está ativo
+                    $maxQuantityField.attr('required', true);
                 } else {
                     $options.slideUp(300);
+                    // Remover validação required quando empilhamento está desativo
+                    $maxQuantityField.removeAttr('required');
+                    $maxQuantityField.val(''); // Limpar valor
                 }
                 
                 updatePreview();
             });
+            
+            // Inicializar estado da validação no carregamento da página
+            var initialStackable = $('input[name="sps_is_stackable"]:checked').val() === '1';
+            if (!initialStackable) {
+                $('#sps_max_quantity').removeAttr('required');
+            } else {
+                $('#sps_max_quantity').attr('required', true);
+            }
             
             // Update preview when values change
             $('#sps_max_quantity, input[name="sps_height_increment"], input[name="sps_length_increment"], input[name="sps_width_increment"]').on('input', function() {
@@ -351,16 +375,24 @@ class SPS_Product_Meta_Box {
      * Save product meta
      */
     public static function save_meta($product_id) {
+        // Debug: Log function call
+        error_log('SPS: save_meta called for product ID: ' . $product_id);
+        error_log('SPS: POST data: ' . print_r($_POST, true));
+        
         // Check nonce
         if (!isset($_POST['sps_product_meta_nonce']) || 
             !wp_verify_nonce($_POST['sps_product_meta_nonce'], 'sps_save_product_meta')) {
+            error_log('SPS: Nonce verification failed');
             return;
         }
         
         // Check permissions
         if (!current_user_can('edit_product', $product_id)) {
+            error_log('SPS: User does not have permission to edit product');
             return;
         }
+        
+        error_log('SPS: Nonce and permissions OK, proceeding with save');
         
         // Get current configurations
         $saved_configs = get_option('sps_stackable_products', array());
@@ -407,12 +439,18 @@ class SPS_Product_Meta_Box {
         }
         
         // Update option
+        error_log('SPS: Updating option with configs: ' . print_r($saved_configs, true));
         update_option('sps_stackable_products', $saved_configs);
         
         // Also update database
         if (method_exists('SPS_Product_Data', 'update_product_in_database')) {
+            error_log('SPS: Calling update_product_in_database');
             SPS_Product_Data::update_product_in_database($product_id, $is_stackable, $config);
+        } else {
+            error_log('SPS: update_product_in_database method does not exist');
         }
+        
+        error_log('SPS: Save completed successfully');
         
         // Add admin notice for successful save
         add_action('admin_notices', function() use ($is_stackable, $product_id) {
