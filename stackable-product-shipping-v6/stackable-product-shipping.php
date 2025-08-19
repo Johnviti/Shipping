@@ -1,8 +1,8 @@
 <?php
 /*
-Plugin Name: Stackable Product Shipping v6.2.6
+Plugin Name: Stackable Product Shipping v7
 Description: Permite criar grupos de empilhamento de produtos para cálculo de frete otimizado e dimensões personalizadas com ajuste dinâmico de preço.
-Version: v6.2.6
+Version: v7
 Author: WPlugin
 */
 
@@ -17,7 +17,7 @@ if (!in_array('woocommerce/woocommerce.php', apply_filters('active_plugins', get
 }
 
 // Define plugin version
-define('SPS_VERSION', 'v6.2.6');
+define('SPS_VERSION', 'v7');
 define('SPS_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('SPS_PLUGIN_URL', plugin_dir_url(__FILE__));
 
@@ -51,6 +51,9 @@ require_once SPS_PLUGIN_DIR . 'includes/class-cdp-frontend.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-cart.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-order.php';
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-multi-packages.php';
+
+// Include Composed Products class
+require_once SPS_PLUGIN_DIR . 'includes/class-sps-composed-product.php';
 
 // Include debug file (temporary)
 if (defined('WP_DEBUG') && WP_DEBUG) {
@@ -684,6 +687,123 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
         
         error_log('SPS: Pacote de dimensões extras criado - Peso: ' . $total_extra_weight . 'kg, Dimensões: ' . 
                   $total_extra_height . 'x' . $total_extra_width . 'x' . $total_extra_length . 'cm');
+    }
+
+    // Verificar se há produtos compostos para criar pacotes específicos
+    $composed_products_data = [];
+    $has_composed_products = false;
+
+    foreach ($cart as $cart_item_key => $cart_item) {
+        $product_id = $cart_item['product_id'];
+        $quantity = $cart_item['quantity'];
+        
+        // Verificar se é um produto composto
+        if (get_post_meta($product_id, '_sps_product_type', true) === 'composed') {
+            $has_composed_products = true;
+            
+            // Obter dados do produto composto
+            $children = get_post_meta($product_id, '_sps_composed_children', true);
+            $composition_policy = get_post_meta($product_id, '_sps_composition_policy', true);
+            
+            if (!empty($children)) {
+                $composed_products_data[$cart_item_key] = [
+                    'product_id' => $product_id,
+                    'quantity' => $quantity,
+                    'children' => $children,
+                    'composition_policy' => $composition_policy,
+                    'cart_item' => $cart_item
+                ];
+            }
+        }
+    }
+
+    // Se há produtos compostos, criar pacotes específicos
+    if ($has_composed_products && !empty($composed_products_data)) {
+        foreach ($composed_products_data as $cart_item_key => $composed_data) {
+            // Calcular dimensões base do produto composto
+            $composed_dimensions = SPS_Composed_Product::calculate_composed_dimensions(
+                $composed_data['children'], 
+                $composed_data['composition_policy']
+            );
+            
+            // Criar pacote principal do produto composto
+            $virtual_item = $composed_data['cart_item'];
+            $virtual_item['data'] = clone $virtual_item['data'];
+            
+            if (is_object($virtual_item['data'])) {
+                $virtual_item['data']->set_width($composed_dimensions['width']);
+                $virtual_item['data']->set_height($composed_dimensions['height']);
+                $virtual_item['data']->set_length($composed_dimensions['length']);
+                $virtual_item['data']->set_weight($composed_dimensions['weight']);
+                $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Produto Composto)');
+            }
+            
+            $composed_package = [
+                'contents'        => [$cart_item_key . '_composed' => $virtual_item],
+                'contents_cost'   => isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0,
+                'applied_coupons' => WC()->cart->get_applied_coupons(),
+                'user'            => ['ID' => get_current_user_id()],
+                'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+                'sps_composed_package' => true,
+                'sps_pacote'      => 'Produto Composto',
+                'package_weight'  => $composed_dimensions['weight'],
+                'package_height'  => $composed_dimensions['height'],
+                'package_length'  => $composed_dimensions['length'],
+                'package_width'   => $composed_dimensions['width'],
+                'sps_composed_data' => [
+                    'product_id' => $composed_data['product_id'],
+                    'children' => $composed_data['children'],
+                    'composition_policy' => $composed_data['composition_policy']
+                ],
+            ];
+            
+            $final_packages[] = $composed_package;
+            
+            // Verificar se há pacotes de excedente CDP para este produto composto
+            if (isset($composed_data['cart_item']['cdp_excess_packages'])) {
+                $excess_packages = $composed_data['cart_item']['cdp_excess_packages'];
+                
+                foreach ($excess_packages as $excess_index => $excess_package) {
+                    $excess_virtual_item = $composed_data['cart_item'];
+                    $excess_virtual_item['data'] = clone $excess_virtual_item['data'];
+                    
+                    if (is_object($excess_virtual_item['data'])) {
+                        $excess_virtual_item['data']->set_width($excess_package['width']);
+                        $excess_virtual_item['data']->set_height($excess_package['height']);
+                        $excess_virtual_item['data']->set_length($excess_package['length']);
+                        $excess_virtual_item['data']->set_weight($excess_package['weight']);
+                        $excess_virtual_item['data']->set_name($virtual_item['data']->get_name() . ' - Pacote Excedente ' . ($excess_index + 1));
+                    }
+                    
+                    $excess_package_data = [
+                        'contents'        => [$cart_item_key . '_excess_' . $excess_index => $excess_virtual_item],
+                        'contents_cost'   => 0, // Pacotes de excedente não têm custo adicional
+                        'applied_coupons' => WC()->cart->get_applied_coupons(),
+                        'user'            => ['ID' => get_current_user_id()],
+                        'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+                        'sps_composed_excess_package' => true,
+                        'sps_pacote'      => 'Pacote Excedente CDP',
+                        'package_weight'  => $excess_package['weight'],
+                        'package_height'  => $excess_package['height'],
+                        'package_length'  => $excess_package['length'],
+                        'package_width'   => $excess_package['width'],
+                        'sps_composed_excess_data' => [
+                            'parent_product_id' => $composed_data['product_id'],
+                            'excess_index' => $excess_index,
+                            'excess_type' => $excess_package['type']
+                        ],
+                    ];
+                    
+                    $final_packages[] = $excess_package_data;
+                    
+                    error_log('SPS: Pacote de excedente CDP criado para produto composto - Peso: ' . $excess_package['weight'] . 'kg, Dimensões: ' . 
+                              $excess_package['height'] . 'x' . $excess_package['width'] . 'x' . $excess_package['length'] . 'cm');
+                }
+            }
+            
+            error_log('SPS: Produto composto processado - ID: ' . $composed_data['product_id'] . ', Peso: ' . $composed_dimensions['weight'] . 'kg, Dimensões: ' . 
+                      $composed_dimensions['height'] . 'x' . $composed_dimensions['width'] . 'x' . $composed_dimensions['length'] . 'cm');
+        }
     }
 
     return $final_packages;
