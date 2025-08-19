@@ -55,21 +55,7 @@ require_once SPS_PLUGIN_DIR . 'includes/class-cdp-multi-packages.php';
 // Include Composed Products class
 require_once SPS_PLUGIN_DIR . 'includes/class-sps-composed-product.php';
 
-// Enable debug temporarily for SPS
-if (!defined('WP_DEBUG')) {
-    define('WP_DEBUG', true);
-}
-if (!defined('WP_DEBUG_LOG')) {
-    define('WP_DEBUG_LOG', true);
-}
 
-// Include debug files (temporary)
-if (file_exists(SPS_PLUGIN_DIR . 'debug-metabox.php')) {
-    require_once SPS_PLUGIN_DIR . 'debug-metabox.php';
-}
-if (file_exists(SPS_PLUGIN_DIR . 'debug-test.php')) {
-    require_once SPS_PLUGIN_DIR . 'debug-test.php';
-}
 
 /**
  * Classe principal do plugin integrado

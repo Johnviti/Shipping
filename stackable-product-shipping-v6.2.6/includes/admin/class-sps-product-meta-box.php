@@ -291,16 +291,6 @@ class SPS_Product_Meta_Box {
         ?>
         <script>
         jQuery(document).ready(function($) {
-            console.log('SPS: JavaScript loaded');
-            
-            // Debug: Log form submission
-            $('#post').on('submit', function() {
-                console.log('SPS: Form being submitted');
-                console.log('SPS: Stackable value:', $('input[name="sps_is_stackable"]:checked').val());
-                console.log('SPS: Max quantity:', $('#sps_max_quantity').val());
-                console.log('SPS: Nonce:', $('input[name="sps_product_meta_nonce"]').val());
-            });
-            
             // Toggle stackable options
             $('input[name="sps_is_stackable"]').on('change', function() {
                 var isStackable = $(this).val() === '1' && $(this).is(':checked');
@@ -375,24 +365,16 @@ class SPS_Product_Meta_Box {
      * Save product meta
      */
     public static function save_meta($product_id) {
-        // Debug: Log function call
-        error_log('SPS: save_meta called for product ID: ' . $product_id);
-        error_log('SPS: POST data: ' . print_r($_POST, true));
-        
         // Check nonce
         if (!isset($_POST['sps_product_meta_nonce']) || 
             !wp_verify_nonce($_POST['sps_product_meta_nonce'], 'sps_save_product_meta')) {
-            error_log('SPS: Nonce verification failed');
             return;
         }
         
         // Check permissions
         if (!current_user_can('edit_product', $product_id)) {
-            error_log('SPS: User does not have permission to edit product');
             return;
         }
-        
-        error_log('SPS: Nonce and permissions OK, proceeding with save');
         
         // Get current configurations
         $saved_configs = get_option('sps_stackable_products', array());
@@ -404,18 +386,19 @@ class SPS_Product_Meta_Box {
         $length_increment = isset($_POST['sps_length_increment']) ? floatval($_POST['sps_length_increment']) : 0;
         $width_increment = isset($_POST['sps_width_increment']) ? floatval($_POST['sps_width_increment']) : 0;
         
+        // Always save configuration (even if not stackable)
+        $config = array(
+            'is_stackable' => $is_stackable, // Save as boolean, not always true
+            'max_quantity' => $max_quantity,
+            'max_stack' => $max_quantity,
+            'height_increment' => $height_increment,
+            'length_increment' => $length_increment,
+            'width_increment' => $width_increment,
+        );
+        
+        $saved_configs[$product_id] = $config;
+        
         if ($is_stackable) {
-            // Save configuration
-            $config = array(
-                'is_stackable' => true,
-                'max_quantity' => $max_quantity,
-                'max_stack' => $max_quantity,
-                'height_increment' => $height_increment,
-                'length_increment' => $length_increment,
-                'width_increment' => $width_increment,
-            );
-            
-            $saved_configs[$product_id] = $config;
             
             // Also save as individual meta fields for easier access
             update_post_meta($product_id, '_sps_stackable', 1);
@@ -425,32 +408,21 @@ class SPS_Product_Meta_Box {
             update_post_meta($product_id, '_sps_width_increment', $width_increment);
             
         } else {
-            // Remove configuration
-            unset($saved_configs[$product_id]);
-            
-            // Remove meta fields
-            delete_post_meta($product_id, '_sps_stackable');
-            delete_post_meta($product_id, '_sps_max_quantity');
-            delete_post_meta($product_id, '_sps_height_increment');
-            delete_post_meta($product_id, '_sps_length_increment');
-            delete_post_meta($product_id, '_sps_width_increment');
-            
-            $config = array();
+            // Save meta fields as false/empty when not stackable
+            update_post_meta($product_id, '_sps_stackable', false);
+            update_post_meta($product_id, '_sps_max_quantity', 0);
+            update_post_meta($product_id, '_sps_height_increment', 0);
+            update_post_meta($product_id, '_sps_length_increment', 0);
+            update_post_meta($product_id, '_sps_width_increment', 0);
         }
         
         // Update option
-        error_log('SPS: Updating option with configs: ' . print_r($saved_configs, true));
         update_option('sps_stackable_products', $saved_configs);
         
         // Also update database
         if (method_exists('SPS_Product_Data', 'update_product_in_database')) {
-            error_log('SPS: Calling update_product_in_database');
             SPS_Product_Data::update_product_in_database($product_id, $is_stackable, $config);
-        } else {
-            error_log('SPS: update_product_in_database method does not exist');
         }
-        
-        error_log('SPS: Save completed successfully');
         
         // Add admin notice for successful save
         add_action('admin_notices', function() use ($is_stackable, $product_id) {
