@@ -108,8 +108,13 @@ class CDP_Admin {
         $max_height = $data ? $data->max_height : '';
         $max_length = $data ? $data->max_length : '';
         $price_per_cm = $data ? $data->price_per_cm : '';
-
         $max_weight = $data ? $data->max_weight : '';
+        
+        // Valores mínimos
+        $min_width = $data ? $data->min_width : '';
+        $min_height = $data ? $data->min_height : '';
+        $min_length = $data ? $data->min_length : '';
+        $min_weight = $data ? $data->min_weight : '';
         
         wp_nonce_field('cdp_save_product_meta', 'cdp_meta_nonce');
         ?>
@@ -242,6 +247,35 @@ class CDP_Admin {
             <?php endif; ?>
             
             <div class="cdp-field-group">
+                <h4><?php _e('Dimensões Mínimas (cm)', 'stackable-product-shipping'); ?></h4>
+                <p class="cdp-help-text"><?php _e('Dimensões mínimas permitidas que o cliente pode selecionar. Se não especificadas, serão usadas as dimensões base do WooCommerce.', 'stackable-product-shipping'); ?></p>
+                
+                <div class="cdp-field-row">
+                    <div class="cdp-field">
+                        <label for="cdp_min_width"><?php _e('Largura Mínima (cm)', 'stackable-product-shipping'); ?></label>
+                        <input type="number" id="cdp_min_width" name="cdp_min_width" value="<?php echo esc_attr($min_width); ?>" step="0.01" min="0" max="<?php echo esc_attr($wc_width ?: 999); ?>">
+                        <?php if ($wc_width): ?>
+                        <div class="cdp-help-text"><?php echo sprintf(__('Padrão: %s cm (dimensão base)', 'stackable-product-shipping'), number_format($wc_width, 2, ',', '.')); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="cdp-field">
+                        <label for="cdp_min_height"><?php _e('Altura Mínima (cm)', 'stackable-product-shipping'); ?></label>
+                        <input type="number" id="cdp_min_height" name="cdp_min_height" value="<?php echo esc_attr($min_height); ?>" step="0.01" min="0" max="<?php echo esc_attr($wc_height ?: 999); ?>">
+                        <?php if ($wc_height): ?>
+                        <div class="cdp-help-text"><?php echo sprintf(__('Padrão: %s cm (dimensão base)', 'stackable-product-shipping'), number_format($wc_height, 2, ',', '.')); ?></div>
+                        <?php endif; ?>
+                    </div>
+                    <div class="cdp-field">
+                        <label for="cdp_min_length"><?php _e('Comprimento Mínimo (cm)', 'stackable-product-shipping'); ?></label>
+                        <input type="number" id="cdp_min_length" name="cdp_min_length" value="<?php echo esc_attr($min_length); ?>" step="0.01" min="0" max="<?php echo esc_attr($wc_length ?: 999); ?>">
+                        <?php if ($wc_length): ?>
+                        <div class="cdp-help-text"><?php echo sprintf(__('Padrão: %s cm (dimensão base)', 'stackable-product-shipping'), number_format($wc_length, 2, ',', '.')); ?></div>
+                        <?php endif; ?>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="cdp-field-group">
                 <h4><?php _e('Dimensões Máximas (cm)', 'stackable-product-shipping'); ?></h4>
                 <p class="cdp-help-text"><?php _e('Dimensões máximas permitidas que o cliente pode selecionar.', 'stackable-product-shipping'); ?></p>
                 
@@ -340,11 +374,33 @@ class CDP_Admin {
         $base_length = $product ? floatval($product->get_length()) : 0;
         $base_weight = $product ? floatval($product->get_weight()) : 0;
         
+        // Obter dimensões antigas para detectar mudanças (para ajuste proporcional de multi-pacotes)
+        $old_dimensions = null;
+        $existing_data = $wpdb->get_row($wpdb->prepare(
+            "SELECT * FROM $table_name WHERE product_id = %d",
+            $post_id
+        ));
+        
+        if ($existing_data && $existing_data->enabled) {
+            // Buscar dimensões base anteriores armazenadas em meta field
+            $stored_base_dimensions = get_post_meta($post_id, '_cdp_last_base_dimensions', true);
+            
+            if ($stored_base_dimensions && is_array($stored_base_dimensions)) {
+                $old_dimensions = $stored_base_dimensions;
+            }
+        }
+        
         // Coletar dados do formulário
         $enabled = isset($_POST['cdp_enabled']) ? 1 : 0;
         $max_width = floatval($_POST['cdp_max_width'] ?? 0);
         $max_height = floatval($_POST['cdp_max_height'] ?? 0);
         $max_length = floatval($_POST['cdp_max_length'] ?? 0);
+        
+        // Coletar dados dos campos mínimos
+        $min_width = floatval($_POST['cdp_min_width'] ?? 0);
+        $min_height = floatval($_POST['cdp_min_height'] ?? 0);
+        $min_length = floatval($_POST['cdp_min_length'] ?? 0);
+        $min_weight = floatval($_POST['cdp_min_weight'] ?? 0);
         
         // Valores padrão para campos automáticos (serão configurados globalmente)
         // Obter valores das configurações globais
@@ -369,6 +425,46 @@ class CDP_Admin {
                 return;
             }
             
+            // Verificar se as dimensões mínimas são válidas (se especificadas)
+            if ($min_width > 0 && $min_width > $base_width) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: A largura mínima não pode ser maior que a dimensão base do WooCommerce.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            if ($min_height > 0 && $min_height > $base_height) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: A altura mínima não pode ser maior que a dimensão base do WooCommerce.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            if ($min_length > 0 && $min_length > $base_length) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: O comprimento mínimo não pode ser maior que a dimensão base do WooCommerce.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            
+            // Verificar se as dimensões mínimas não são maiores que as máximas
+            if ($min_width > 0 && $max_width > 0 && $min_width > $max_width) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: A largura mínima não pode ser maior que a largura máxima.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            if ($min_height > 0 && $max_height > 0 && $min_height > $max_height) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: A altura mínima não pode ser maior que a altura máxima.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            if ($min_length > 0 && $max_length > 0 && $min_length > $max_length) {
+                add_action('admin_notices', function() {
+                    echo '<div class="notice notice-error"><p>' . __('Erro: O comprimento mínimo não pode ser maior que o comprimento máximo.', 'stackable-product-shipping') . '</p></div>';
+                });
+                return;
+            }
+            
             // Validações removidas - preço e densidade serão configurados globalmente
         }
         
@@ -388,10 +484,14 @@ class CDP_Admin {
                     'max_height' => $max_height,
                     'max_length' => $max_length,
                     'max_weight' => $max_weight,
+                    'min_width' => $min_width,
+                    'min_height' => $min_height,
+                    'min_length' => $min_length,
+                    'min_weight' => $min_weight,
                     'price_per_cm' => $price_per_cm,
                 ),
                 array('product_id' => $post_id),
-                array('%d', '%f', '%f', '%f', '%f', '%f'),
+                array('%d', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f'),
                 array('%d')
             );
         } else {
@@ -405,14 +505,79 @@ class CDP_Admin {
                     'max_height' => $max_height,
                     'max_length' => $max_length,
                     'max_weight' => $max_weight,
+                    'min_width' => $min_width,
+                    'min_height' => $min_height,
+                    'min_length' => $min_length,
+                    'min_weight' => $min_weight,
                     'price_per_cm' => $price_per_cm,
                 ),
-                array('%d', '%d', '%f', '%f', '%f', '%f', '%f')
+                array('%d', '%d', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f', '%f')
             );
+        }
+        
+        // Armazenar dimensões base atuais para próxima comparação
+        if ($enabled) {
+            $current_base_dimensions = array(
+                'width' => $base_width,
+                'height' => $base_height,
+                'length' => $base_length,
+                'weight' => $base_weight
+            );
+            update_post_meta($post_id, '_cdp_last_base_dimensions', $current_base_dimensions);
+        } else {
+            // Se desabilitado, remover meta field
+            delete_post_meta($post_id, '_cdp_last_base_dimensions');
         }
         
         // Limpar cache
         wp_cache_delete('cdp_product_' . $post_id, 'cdp_products');
+        
+        // Verificar se houve mudanças nas dimensões base e ajustar multi-pacotes proporcionalmente
+        if ($enabled && $old_dimensions && class_exists('CDP_Multi_Packages')) {
+            // Usar as dimensões atuais já armazenadas
+            $current_dimensions = $current_base_dimensions;
+            
+            // Verificar se alguma dimensão mudou significativamente (diferença > 0.01)
+            $dimensions_changed = false;
+            $change_details = array();
+            
+            foreach (['width', 'height', 'length', 'weight'] as $dim) {
+                $old_val = $old_dimensions[$dim];
+                $new_val = $current_dimensions[$dim];
+                
+                if (abs($old_val - $new_val) > 0.01) {
+                    $dimensions_changed = true;
+                    $change_details[$dim] = array(
+                        'old' => $old_val,
+                        'new' => $new_val,
+                        'change_percent' => $old_val > 0 ? (($new_val - $old_val) / $old_val) * 100 : 0
+                    );
+                }
+            }
+            
+            // Se houve mudanças, ajustar multi-pacotes proporcionalmente
+            if ($dimensions_changed && CDP_Multi_Packages::has_multiple_packages($post_id)) {
+                $adjusted = CDP_Multi_Packages::adjust_packages_proportionally_static(
+                    $post_id,
+                    $old_dimensions,
+                    $current_dimensions
+                );
+                
+                if ($adjusted) {
+                    // Log das mudanças detectadas
+                    $change_log = array();
+                    foreach ($change_details as $dim => $details) {
+                        $change_log[] = "{$dim}: {$details['old']} → {$details['new']} (" . sprintf('%+.1f', $details['change_percent']) . "%)";
+                    }
+                    
+                    error_log("CDP Admin: Dimensões base alteradas para produto {$post_id} - " . implode(', ', $change_log));
+                    
+                    add_action('admin_notices', function() {
+                        echo '<div class="notice notice-info"><p>' . __('Multi-pacotes ajustados proporcionalmente às mudanças nas dimensões base.', 'stackable-product-shipping') . '</p></div>';
+                    });
+                }
+            }
+        }
         
         // Mensagem de sucesso
         if ($enabled) {
@@ -514,7 +679,7 @@ class CDP_Admin {
         
         $table_name = $wpdb->prefix . 'cdp_product_dimensions';
         $data = $wpdb->get_row($wpdb->prepare(
-            "SELECT max_width, max_height, max_length, enabled FROM $table_name WHERE product_id = %d AND enabled = 1",
+            "SELECT max_width, max_height, max_length, min_width, min_height, min_length, min_weight, enabled FROM $table_name WHERE product_id = %d AND enabled = 1",
             $product_id
         ));
         

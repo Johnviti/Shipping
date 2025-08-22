@@ -42,6 +42,7 @@ class SPS_Product_Export {
             'ID do Produto',
             'SKU',
             'Empilhável',
+            'Quantidade Mínima',
             'Quantidade Máxima',
             'Incremento de Altura (cm)',
             'Incremento de Comprimento (cm)',

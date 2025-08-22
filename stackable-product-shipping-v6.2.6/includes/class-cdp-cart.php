@@ -42,6 +42,18 @@ class CDP_Cart {
      * Validar adição ao carrinho
      */
     public function validate_add_to_cart($passed, $product_id, $quantity) {
+        // Verificar se é um produto empilhável e validar quantidade mínima
+        $is_stackable = get_post_meta($product_id, '_sps_stackable', true);
+        if ($is_stackable) {
+
+            
+            $max_quantity = (int) get_post_meta($product_id, '_sps_max_quantity', true);
+            if ($max_quantity > 0 && $quantity > $max_quantity) {
+                wc_add_notice(sprintf(__('Este produto empilhável permite uma quantidade máxima de %d unidades.', 'stackable-product-shipping'), $max_quantity), 'error');
+                return false;
+            }
+        }
+        
         // Verificar se é um produto com dimensões personalizadas
         $product_data = $this->get_product_dimension_data($product_id);
         
@@ -62,10 +74,15 @@ class CDP_Cart {
             $height = floatval($_POST['cdp_custom_height']);
             $length = floatval($_POST['cdp_custom_length']);
             
-            // Validar limites
-            if ($width < $product_data->base_width || $width > $product_data->max_width ||
-                $height < $product_data->base_height || $height > $product_data->max_height ||
-                $length < $product_data->base_length || $length > $product_data->max_length) {
+            // Determinar limites mínimos (usar valores mínimos configurados ou valores base como fallback)
+            $min_width = !empty($product_data->min_width) ? $product_data->min_width : $product_data->base_width;
+            $min_height = !empty($product_data->min_height) ? $product_data->min_height : $product_data->base_height;
+            $min_length = !empty($product_data->min_length) ? $product_data->min_length : $product_data->base_length;
+            
+            // Validar limites mínimos e máximos
+            if ($width < $min_width || $width > $product_data->max_width ||
+                $height < $min_height || $height > $product_data->max_height ||
+                $length < $min_length || $length > $product_data->max_length) {
                 
                 wc_add_notice(__('As dimensões especificadas estão fora dos limites permitidos.', 'stackable-product-shipping'), 'error');
                 return false;
@@ -361,10 +378,19 @@ class CDP_Cart {
         // Validar dimensões
         $product_data = $this->get_product_dimension_data($cart_item['product_id']);
         
-        if (!$product_data || 
-            $width < $product_data->base_width || $width > $product_data->max_width ||
-            $height < $product_data->base_height || $height > $product_data->max_height ||
-            $length < $product_data->base_length || $length > $product_data->max_length) {
+        if (!$product_data) {
+            wp_send_json_error(__('Dados do produto não encontrados', 'stackable-product-shipping'));
+        }
+        
+        // Determinar limites mínimos (usar valores mínimos configurados ou valores base como fallback)
+        $min_width = !empty($product_data->min_width) ? $product_data->min_width : $product_data->base_width;
+        $min_height = !empty($product_data->min_height) ? $product_data->min_height : $product_data->base_height;
+        $min_length = !empty($product_data->min_length) ? $product_data->min_length : $product_data->base_length;
+        
+        // Validar limites mínimos e máximos
+        if ($width < $min_width || $width > $product_data->max_width ||
+            $height < $min_height || $height > $product_data->max_height ||
+            $length < $min_length || $length > $product_data->max_length) {
             
             wp_send_json_error(__('Dimensões fora dos limites permitidos', 'stackable-product-shipping'));
         }
@@ -450,6 +476,10 @@ class CDP_Cart {
                     'base_width' => (float) $product->get_width(),
                     'base_height' => (float) $product->get_height(),
                     'base_length' => (float) $product->get_length(),
+                    'min_width' => isset($table_data->min_width) ? $table_data->min_width : null,
+                    'min_height' => isset($table_data->min_height) ? $table_data->min_height : null,
+                    'min_length' => isset($table_data->min_length) ? $table_data->min_length : null,
+                    'min_weight' => isset($table_data->min_weight) ? $table_data->min_weight : null,
                     'max_width' => $table_data->max_width,
                     'max_height' => $table_data->max_height,
                     'max_length' => $table_data->max_length,

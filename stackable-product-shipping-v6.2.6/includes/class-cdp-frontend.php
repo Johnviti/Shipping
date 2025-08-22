@@ -40,7 +40,7 @@ class CDP_Frontend {
     public function add_dimension_selector() {
         global $product;
         
-        if (!$product || ($product->get_type() !== 'simple' && !$this->is_composed_product($product))) {
+        if (!$product || !is_object($product) || !method_exists($product, 'get_id') || ($product->get_type() !== 'simple' && !$this->is_composed_product($product))) {
             return;
         }
         
@@ -181,12 +181,12 @@ class CDP_Frontend {
                            id="cdp_custom_width" 
                            name="cdp_custom_width" 
                            value="<?php echo esc_attr($product_data->base_width); ?>"
-                           min="<?php echo esc_attr($product_data->base_width); ?>"
+                           min="<?php echo esc_attr($product_data->min_width ?: $product_data->base_width); ?>"
                            max="<?php echo esc_attr($product_data->max_width); ?>"
                            step="0.01">
                     <div class="cdp-range-info">
                         <?php echo sprintf(__('Min: %s | Max: %s', 'stackable-product-shipping'), 
-                            number_format($product_data->base_width, 2, ',', '.'),
+                            number_format($product_data->min_width ?: $product_data->base_width, 2, ',', '.'),
                             number_format($product_data->max_width, 2, ',', '.')
                         ); ?>
                     </div>
@@ -201,12 +201,12 @@ class CDP_Frontend {
                            id="cdp_custom_height" 
                            name="cdp_custom_height" 
                            value="<?php echo esc_attr($product_data->base_height); ?>"
-                           min="<?php echo esc_attr($product_data->base_height); ?>"
+                           min="<?php echo esc_attr($product_data->min_height ?: $product_data->base_height); ?>"
                            max="<?php echo esc_attr($product_data->max_height); ?>"
                            step="0.01">
                     <div class="cdp-range-info">
                         <?php echo sprintf(__('Min: %s | Max: %s', 'stackable-product-shipping'), 
-                            number_format($product_data->base_height, 2, ',', '.'),
+                            number_format($product_data->min_height ?: $product_data->base_height, 2, ',', '.'),
                             number_format($product_data->max_height, 2, ',', '.')
                         ); ?>
                     </div>
@@ -221,12 +221,12 @@ class CDP_Frontend {
                            id="cdp_custom_length" 
                            name="cdp_custom_length" 
                            value="<?php echo esc_attr($product_data->base_length); ?>"
-                           min="<?php echo esc_attr($product_data->base_length); ?>"
+                           min="<?php echo esc_attr($product_data->min_length ?: $product_data->base_length); ?>"
                            max="<?php echo esc_attr($product_data->max_length); ?>"
                            step="0.01">
                     <div class="cdp-range-info">
                         <?php echo sprintf(__('Min: %s | Max: %s', 'stackable-product-shipping'), 
-                            number_format($product_data->base_length, 2, ',', '.'),
+                            number_format($product_data->min_length ?: $product_data->base_length, 2, ',', '.'),
                             number_format($product_data->max_length, 2, ',', '.')
                         ); ?>
                     </div>
@@ -278,6 +278,10 @@ class CDP_Frontend {
                     'base_width' => (float) $product->get_width(),
                     'base_height' => (float) $product->get_height(),
                     'base_length' => (float) $product->get_length(),
+                    'min_width' => isset($table_data->min_width) ? $table_data->min_width : null,
+                    'min_height' => isset($table_data->min_height) ? $table_data->min_height : null,
+                    'min_length' => isset($table_data->min_length) ? $table_data->min_length : null,
+                    'min_weight' => isset($table_data->min_weight) ? $table_data->min_weight : null,
                     'max_width' => $table_data->max_width,
                     'max_height' => $table_data->max_height,
                     'max_length' => $table_data->max_length,
@@ -336,9 +340,13 @@ class CDP_Frontend {
         }
         
         // Validar dimensões
-        if ($width < $product_data->base_width || $width > $product_data->max_width ||
-            $height < $product_data->base_height || $height > $product_data->max_height ||
-            $length < $product_data->base_length || $length > $product_data->max_length) {
+        $min_width = $product_data->min_width ?: $product_data->base_width;
+        $min_height = $product_data->min_height ?: $product_data->base_height;
+        $min_length = $product_data->min_length ?: $product_data->base_length;
+        
+        if ($width < $min_width || $width > $product_data->max_width ||
+            $height < $min_height || $height > $product_data->max_height ||
+            $length < $min_length || $length > $product_data->max_length) {
             error_log('CDP AJAX: Dimensões fora dos limites permitidos');
             wp_send_json_error(__('Dimensões fora dos limites permitidos', 'stackable-product-shipping'));
         }
@@ -433,7 +441,7 @@ class CDP_Frontend {
      * Verificar se é um produto composto
      */
     public function is_composed_product($product) {
-        if (!$product) return false;
+        if (!$product || !is_object($product) || !method_exists($product, 'get_id')) return false;
         return get_post_meta($product->get_id(), '_sps_product_type', true) === 'composed';
     }
     
@@ -512,6 +520,13 @@ class CDP_Frontend {
      */
     public function enqueue_frontend_scripts() {
         if (is_product()) {
+            global $product;
+            
+            // Verificar se $product é um objeto WC_Product válido
+            if (!$product || !is_object($product) || !method_exists($product, 'get_id')) {
+                $product = wc_get_product();
+            }
+            
             wp_enqueue_script(
                 'cdp-frontend-js',
                 SPS_PLUGIN_URL . 'assets/js/cdp-frontend.js',
@@ -519,6 +534,23 @@ class CDP_Frontend {
                 SPS_VERSION,
                 true
             );
+            
+            // Obter dados dos pacotes se disponíveis
+            $packages_data = array();
+            if ($product && is_object($product) && method_exists($product, 'get_id') && class_exists('CDP_Multi_Packages') && CDP_Multi_Packages::has_multiple_packages($product->get_id())) {
+                $packages = CDP_Multi_Packages::get_instance()->get_product_packages($product->get_id());
+                foreach ($packages as $package) {
+                    $packages_data[] = array(
+                        'name' => $package->package_name,
+                        'width' => floatval($package->width),
+                        'height' => floatval($package->height),
+                        'length' => floatval($package->length),
+                        'weight' => floatval($package->weight),
+                        'enabled' => intval($package->enabled),
+                        'package_order' => intval($package->package_order)
+                    );
+                }
+            }
             
             wp_localize_script('cdp-frontend-js', 'cdp_ajax', array(
                 'ajax_url' => admin_url('admin-ajax.php'),
@@ -530,6 +562,11 @@ class CDP_Frontend {
                     'error' => __('Erro ao calcular preço', 'stackable-product-shipping')
                 )
             ));
+            
+            // Adicionar dados dos pacotes como variável JavaScript separada
+            if (!empty($packages_data)) {
+                wp_add_inline_script('cdp-frontend-js', 'var cdp_packages_data = ' . wp_json_encode($packages_data) . ';', 'before');
+            }
         }
     }
 }

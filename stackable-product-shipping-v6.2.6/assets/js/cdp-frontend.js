@@ -16,6 +16,12 @@ jQuery(document).ready(function($) {
     const baseHeight = parseFloat($('#cdp-base-height').val());
     const baseLength = parseFloat($('#cdp-base-length').val());
     
+    // Dados dos pacotes (se disponíveis)
+    let packagesData = [];
+    if (typeof cdp_packages_data !== 'undefined') {
+        packagesData = cdp_packages_data;
+    }
+    
     // Estado das dimensões
     let currentDimensions = {
         width: baseWidth,
@@ -82,7 +88,10 @@ jQuery(document).ready(function($) {
         updateConfirmationStatus();
         
         clearTimeout(calculateTimeout);
-        calculateTimeout = setTimeout(calculatePrice, 300);
+        calculateTimeout = setTimeout(function() {
+            calculatePrice();
+            updatePackagesPreview();
+        }, 300);
     }
     
     /**
@@ -375,6 +384,173 @@ jQuery(document).ready(function($) {
         $errorMessage.hide();
     }
     
+    /**
+     * Atualizar prévia dos pacotes escalados
+     */
+    function updatePackagesPreview() {
+        if (packagesData.length === 0) return;
+        
+        const width = parseFloat($('#cdp_custom_width').val()) || baseWidth;
+        const height = parseFloat($('#cdp_custom_height').val()) || baseHeight;
+        const length = parseFloat($('#cdp_custom_length').val()) || baseLength;
+        
+        // Calcular escalas
+        const scales = calculateDimensionScales(width, height, length);
+        
+        // Aplicar escalas aos pacotes
+        const scaledPackages = applyScalesToPackages(packagesData, scales);
+        
+        // Exibir prévia
+        displayPackagesPreview(scaledPackages, scales);
+    }
+    
+    /**
+     * Calcular escalas das dimensões
+     */
+    function calculateDimensionScales(customWidth, customHeight, customLength) {
+        return {
+            w: baseWidth > 0 ? customWidth / baseWidth : 1,
+            h: baseHeight > 0 ? customHeight / baseHeight : 1,
+            l: baseLength > 0 ? customLength / baseLength : 1
+        };
+    }
+    
+    /**
+     * Aplicar escalas aos pacotes
+     */
+    function applyScalesToPackages(packages, scales) {
+        return packages.map(function(pkg) {
+            const scaledPkg = {
+                ...pkg,
+                original: {
+                    width: pkg.width,
+                    height: pkg.height,
+                    length: pkg.length,
+                    weight: pkg.weight
+                },
+                scaled: {
+                    width: Math.round(pkg.width * scales.w * 100) / 100,
+                    height: Math.round(pkg.height * scales.h * 100) / 100,
+                    length: Math.round(pkg.length * scales.l * 100) / 100,
+                    weight: Math.round(pkg.weight * scales.w * scales.h * scales.l * 1000) / 1000
+                },
+                clamped: {
+                    width: false,
+                    height: false,
+                    length: false
+                }
+            };
+            
+            // Aplicar clamps se houver limites definidos
+            if (pkg.min_width && scaledPkg.scaled.width < pkg.min_width) {
+                scaledPkg.scaled.width = pkg.min_width;
+                scaledPkg.clamped.width = true;
+            }
+            if (pkg.max_width && scaledPkg.scaled.width > pkg.max_width) {
+                scaledPkg.scaled.width = pkg.max_width;
+                scaledPkg.clamped.width = true;
+            }
+            
+            if (pkg.min_height && scaledPkg.scaled.height < pkg.min_height) {
+                scaledPkg.scaled.height = pkg.min_height;
+                scaledPkg.clamped.height = true;
+            }
+            if (pkg.max_height && scaledPkg.scaled.height > pkg.max_height) {
+                scaledPkg.scaled.height = pkg.max_height;
+                scaledPkg.clamped.height = true;
+            }
+            
+            if (pkg.min_length && scaledPkg.scaled.length < pkg.min_length) {
+                scaledPkg.scaled.length = pkg.min_length;
+                scaledPkg.clamped.length = true;
+            }
+            if (pkg.max_length && scaledPkg.scaled.length > pkg.max_length) {
+                scaledPkg.scaled.length = pkg.max_length;
+                scaledPkg.clamped.length = true;
+            }
+            
+            return scaledPkg;
+        });
+    }
+    
+    /**
+     * Exibir prévia dos pacotes
+     */
+    function displayPackagesPreview(scaledPackages, scales) {
+        let $previewContainer = $('#cdp-packages-preview');
+        
+        if ($previewContainer.length === 0) {
+            $previewContainer = $('<div id="cdp-packages-preview" class="cdp-packages-preview"></div>');
+            $dimensionSelector.after($previewContainer);
+        }
+        
+        if (scaledPackages.length === 0) {
+            $previewContainer.hide();
+            return;
+        }
+        
+        let html = '<h4>Prévia dos Pacotes Escalados:</h4>';
+        html += '<div class="cdp-scales-info">';
+        html += `<p><strong>Escalas aplicadas:</strong> Largura: ${scales.w.toFixed(2)}x, Altura: ${scales.h.toFixed(2)}x, Comprimento: ${scales.l.toFixed(2)}x</p>`;
+        html += '</div>';
+        
+        html += '<div class="cdp-packages-list">';
+        
+        scaledPackages.forEach(function(pkg, index) {
+            html += `<div class="cdp-package-item">`;
+            html += `<h5>${pkg.name || 'Pacote ' + (index + 1)}</h5>`;
+            html += '<div class="cdp-package-dimensions">';
+            
+            // Largura
+            html += '<div class="cdp-dimension-row">';
+            html += `<span class="cdp-dimension-label">Largura:</span>`;
+            html += `<span class="cdp-dimension-original">${pkg.original.width} cm</span>`;
+            html += `<span class="cdp-dimension-arrow">→</span>`;
+            html += `<span class="cdp-dimension-scaled ${pkg.clamped.width ? 'clamped' : ''}">${pkg.scaled.width} cm</span>`;
+            if (pkg.clamped.width) {
+                html += `<span class="cdp-clamp-indicator" title="Valor limitado pelos mínimos/máximos">⚠️</span>`;
+            }
+            html += '</div>';
+            
+            // Altura
+            html += '<div class="cdp-dimension-row">';
+            html += `<span class="cdp-dimension-label">Altura:</span>`;
+            html += `<span class="cdp-dimension-original">${pkg.original.height} cm</span>`;
+            html += `<span class="cdp-dimension-arrow">→</span>`;
+            html += `<span class="cdp-dimension-scaled ${pkg.clamped.height ? 'clamped' : ''}">${pkg.scaled.height} cm</span>`;
+            if (pkg.clamped.height) {
+                html += `<span class="cdp-clamp-indicator" title="Valor limitado pelos mínimos/máximos">⚠️</span>`;
+            }
+            html += '</div>';
+            
+            // Comprimento
+            html += '<div class="cdp-dimension-row">';
+            html += `<span class="cdp-dimension-label">Comprimento:</span>`;
+            html += `<span class="cdp-dimension-original">${pkg.original.length} cm</span>`;
+            html += `<span class="cdp-dimension-arrow">→</span>`;
+            html += `<span class="cdp-dimension-scaled ${pkg.clamped.length ? 'clamped' : ''}">${pkg.scaled.length} cm</span>`;
+            if (pkg.clamped.length) {
+                html += `<span class="cdp-clamp-indicator" title="Valor limitado pelos mínimos/máximos">⚠️</span>`;
+            }
+            html += '</div>';
+            
+            // Peso
+            html += '<div class="cdp-dimension-row">';
+            html += `<span class="cdp-dimension-label">Peso:</span>`;
+            html += `<span class="cdp-dimension-original">${pkg.original.weight} kg</span>`;
+            html += `<span class="cdp-dimension-arrow">→</span>`;
+            html += `<span class="cdp-dimension-scaled">${pkg.scaled.weight} kg</span>`;
+            html += '</div>';
+            
+            html += '</div>';
+            html += '</div>';
+        });
+        
+        html += '</div>';
+        
+        $previewContainer.html(html).show();
+    }
+    
     // Adicionar estilos CSS
     $('<style>').prop('type', 'text/css').html(`
         .cdp-dimension-field input.error {
@@ -429,6 +605,99 @@ jQuery(document).ready(function($) {
         .single_add_to_cart_button.disabled {
             opacity: 0.6;
             cursor: not-allowed;
+        }
+        
+        .cdp-packages-preview {
+            margin: 20px 0;
+            padding: 15px;
+            border: 2px solid #e3f2fd;
+            border-radius: 8px;
+            background: #f8f9fa;
+        }
+        
+        .cdp-packages-preview h4 {
+            margin: 0 0 15px 0;
+            color: #1976d2;
+            font-size: 16px;
+        }
+        
+        .cdp-scales-info {
+            margin-bottom: 15px;
+            padding: 10px;
+            background: #e8f4fd;
+            border-radius: 4px;
+            border-left: 4px solid #2196f3;
+        }
+        
+        .cdp-scales-info p {
+            margin: 0;
+            font-size: 14px;
+            color: #1565c0;
+        }
+        
+        .cdp-package-item {
+            margin-bottom: 15px;
+            padding: 12px;
+            background: white;
+            border: 1px solid #dee2e6;
+            border-radius: 6px;
+        }
+        
+        .cdp-package-item:last-child {
+            margin-bottom: 0;
+        }
+        
+        .cdp-package-item h5 {
+            margin: 0 0 10px 0;
+            color: #495057;
+            font-size: 14px;
+            font-weight: 600;
+        }
+        
+        .cdp-dimension-row {
+            display: flex;
+            align-items: center;
+            margin-bottom: 8px;
+            font-size: 13px;
+        }
+        
+        .cdp-dimension-row:last-child {
+            margin-bottom: 0;
+        }
+        
+        .cdp-dimension-label {
+            min-width: 80px;
+            font-weight: 500;
+            color: #6c757d;
+        }
+        
+        .cdp-dimension-original {
+            min-width: 60px;
+            color: #6c757d;
+            text-align: right;
+        }
+        
+        .cdp-dimension-arrow {
+            margin: 0 8px;
+            color: #28a745;
+            font-weight: bold;
+        }
+        
+        .cdp-dimension-scaled {
+            min-width: 60px;
+            font-weight: 600;
+            color: #28a745;
+        }
+        
+        .cdp-dimension-scaled.clamped {
+            color: #fd7e14;
+            font-weight: bold;
+        }
+        
+        .cdp-clamp-indicator {
+            margin-left: 5px;
+            font-size: 12px;
+            cursor: help;
         }
     `).appendTo('head');
 });

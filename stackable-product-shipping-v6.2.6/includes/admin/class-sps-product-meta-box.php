@@ -34,6 +34,8 @@ class SPS_Product_Meta_Box {
             $saved_configs[$product_id]['max_quantity'] : 
             (int) get_post_meta($product_id, '_sps_max_quantity', true);
             
+
+            
         // Debug: Log current values
         error_log('SPS Render - Product ID: ' . $product_id);
         error_log('SPS Render - Saved configs: ' . print_r($saved_configs, true));
@@ -107,6 +109,8 @@ class SPS_Product_Meta_Box {
                 <div class="sps-stackable-options" style="<?php echo $is_stackable ? '' : 'display: none;'; ?>">
                     
                     <table class="form-table">
+
+                        
                         <tr>
                             <th scope="row">
                                 <label for="sps_max_quantity">Quantidade Máxima</label>
@@ -317,6 +321,7 @@ class SPS_Product_Meta_Box {
                 var isStackable = $(this).val() === '1' && $(this).is(':checked');
                 var $options = $('.sps-stackable-options');
                 var $maxQuantityField = $('#sps_max_quantity');
+    
                 
                 if (isStackable) {
                     $options.slideDown(300);
@@ -327,6 +332,7 @@ class SPS_Product_Meta_Box {
                     // Remover validação required quando empilhamento está desativo
                     $maxQuantityField.removeAttr('required');
                     $maxQuantityField.val(''); // Limpar valor
+                    $minQuantityField.val(''); // Limpar valor
                 }
                 
                 updatePreview();
@@ -345,9 +351,12 @@ class SPS_Product_Meta_Box {
                 updatePreview();
             });
             
+
+            
             // Preview calculation function
             function updatePreview() {
                 var isStackable = $('input[name="sps_is_stackable"]:checked').val() === '1';
+
                 var maxQuantity = parseInt($('#sps_max_quantity').val()) || 0;
                 var heightIncrement = parseFloat($('input[name="sps_height_increment"]').val()) || 0;
                 var lengthIncrement = parseFloat($('input[name="sps_length_increment"]').val()) || 0;
@@ -367,10 +376,14 @@ class SPS_Product_Meta_Box {
                 var stackedLength = baseLength + (lengthIncrement * (maxQuantity - 1));
                 var stackedHeight = baseHeight + (heightIncrement * (maxQuantity - 1));
                 
+                var quantityRange = '';
+                if (maxQuantity > 0) {
+                    quantityRange = ' (máx. ' + maxQuantity + ' unidades)';
+                }
+                
                 var stackedDimensions = stackedWidth.toFixed(1) + ' × ' + 
                                       stackedLength.toFixed(1) + ' × ' + 
-                                      stackedHeight.toFixed(1) + ' ' + unit + 
-                                      ' (' + maxQuantity + ' unidades)';
+                                      stackedHeight.toFixed(1) + ' ' + unit + quantityRange;
                 
                 $('#sps-preview-stacked').text(stackedDimensions);
             }
@@ -410,6 +423,7 @@ class SPS_Product_Meta_Box {
         
         // Get form data
         $is_stackable = isset($_POST['sps_is_stackable']) && $_POST['sps_is_stackable'] === '1';
+
         $max_quantity = isset($_POST['sps_max_quantity']) ? max(1, intval($_POST['sps_max_quantity'])) : 1;
         $height_increment = isset($_POST['sps_height_increment']) ? floatval($_POST['sps_height_increment']) : 0;
         $length_increment = isset($_POST['sps_length_increment']) ? floatval($_POST['sps_length_increment']) : 0;
@@ -418,6 +432,7 @@ class SPS_Product_Meta_Box {
         // Always save configuration (even if not stackable)
         $config = array(
             'is_stackable' => $is_stackable, // Save as boolean, not always true
+
             'max_quantity' => $max_quantity,
             'max_stack' => $max_quantity,
             'height_increment' => $height_increment,
@@ -431,6 +446,7 @@ class SPS_Product_Meta_Box {
             
             // Also save as individual meta fields for easier access
             update_post_meta($product_id, '_sps_stackable', 1);
+
             update_post_meta($product_id, '_sps_max_quantity', $max_quantity);
             update_post_meta($product_id, '_sps_height_increment', $height_increment);
             update_post_meta($product_id, '_sps_length_increment', $length_increment);
@@ -439,6 +455,7 @@ class SPS_Product_Meta_Box {
         } else {
             // Save meta fields as false/empty when not stackable
             update_post_meta($product_id, '_sps_stackable', false);
+
             update_post_meta($product_id, '_sps_max_quantity', 0);
             update_post_meta($product_id, '_sps_height_increment', 0);
             update_post_meta($product_id, '_sps_length_increment', 0);

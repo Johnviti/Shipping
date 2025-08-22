@@ -42,9 +42,11 @@ require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-export.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-import.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-meta-box.php';
 require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-product-page-renderer.php';
+require_once SPS_PLUGIN_DIR . 'includes/admin/class-sps-wp-all-export-integration.php';
 
 // Incluir arquivos de migração
 require_once SPS_PLUGIN_DIR . 'migration-multi-packages.php';
+require_once SPS_PLUGIN_DIR . 'migration-cdp-min-fields.php';
 
 // Include Custom Dimensions Pricing classes
 require_once SPS_PLUGIN_DIR . 'includes/class-cdp-admin.php';
@@ -252,6 +254,10 @@ class SPS_Main {
             
             // 3. Adicionar colunas faltantes
             $columns_to_add = [
+                'min_width' => 'decimal(10,2) DEFAULT 0 AFTER product_id',
+                'min_height' => 'decimal(10,2) DEFAULT 0 AFTER min_width',
+                'min_length' => 'decimal(10,2) DEFAULT 0 AFTER min_height',
+                'min_weight' => 'decimal(10,3) DEFAULT 0 AFTER min_length',
                 'max_length' => 'decimal(10,2) DEFAULT 0 AFTER max_height',
                 'max_weight' => 'decimal(10,3) DEFAULT 0 AFTER max_length',
                 'density_per_cm3' => 'decimal(10,5) DEFAULT 0 AFTER price_per_cm'
@@ -273,6 +279,10 @@ class SPS_Main {
             
             $modify_queries = [];
             $column_definitions = [
+                'min_width' => 'decimal(10,2) DEFAULT 0',
+                'min_height' => 'decimal(10,2) DEFAULT 0',
+                'min_length' => 'decimal(10,2) DEFAULT 0',
+                'min_weight' => 'decimal(10,3) DEFAULT 0',
                 'max_width' => 'decimal(10,2) DEFAULT 0',
                 'max_height' => 'decimal(10,2) DEFAULT 0',
                 'max_length' => 'decimal(10,2) DEFAULT 0',
@@ -323,6 +333,10 @@ class SPS_Main {
                     'base_width' => (float) $product->get_width(),
                     'base_height' => (float) $product->get_height(),
                     'base_length' => (float) $product->get_length(),
+                    'min_width' => isset($table_data->min_width) ? $table_data->min_width : 0,
+                    'min_height' => isset($table_data->min_height) ? $table_data->min_height : 0,
+                    'min_length' => isset($table_data->min_length) ? $table_data->min_length : 0,
+                    'min_weight' => isset($table_data->min_weight) ? $table_data->min_weight : 0,
                     'max_width' => $table_data->max_width,
                     'max_height' => $table_data->max_height,
                     'max_length' => $table_data->max_length,
@@ -385,6 +399,11 @@ function sps_register_ajax_handlers() {
     // Inicializar sistema de múltiplos pacotes
     if (class_exists('CDP_Multi_Packages')) {
         CDP_Multi_Packages::init();
+    }
+    
+    // Inicializar integração com WP All Export
+    if (class_exists('SPS_WP_All_Export_Integration')) {
+        SPS_WP_All_Export_Integration::init();
     }
     
 }
@@ -503,7 +522,17 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
         
         // Verificar se o produto tem múltiplos pacotes configurados
         if (CDP_Multi_Packages::has_multiple_packages($product_id)) {
-            $packages_config = CDP_Multi_Packages::get_packages_for_shipping($product_id, $quantity);
+            // Verificar se há dimensões personalizadas no item do carrinho
+            $custom_dimensions = null;
+            if (isset($cart_item['cdp_custom_dimensions'])) {
+                $custom_dimensions = array(
+                    'w' => floatval($cart_item['cdp_custom_dimensions']['width']),
+                    'h' => floatval($cart_item['cdp_custom_dimensions']['height']),
+                    'l' => floatval($cart_item['cdp_custom_dimensions']['length'])
+                );
+            }
+            
+            $packages_config = CDP_Multi_Packages::get_packages_for_shipping($product_id, $quantity, $custom_dimensions);
             
             if (!empty($packages_config)) {
                 foreach ($packages_config as $package_index => $package_config) {
