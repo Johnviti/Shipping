@@ -95,7 +95,6 @@ class SPS_Main {
     public function init() {
         // Inicializar classes SPS
         new SPS_Ajax();
-        SPS_Cart::init(); // Inicializar hooks do carrinho para dimensões personalizadas
         
         // Inicializar classes CDP (Custom Dimensions Pricing)
         CDP_Admin::get_instance();
@@ -400,7 +399,7 @@ function sps_enqueue_frontend_scripts() {
     ));
 }
 
-// Filtro para alterar os pacotes de frete do WooCommerce - SISTEMA DE PACOTE ÚNICO
+// Filtro para alterar os pacotes de frete do WooCommerce - SISTEMA DE PACOTE ÚNICO COM MÚLTIPLOS VOLUMES
 add_filter('woocommerce_cart_shipping_packages', function($packages) {
     if (is_admin() && !defined('DOING_AJAX')) return $packages;
     if (!class_exists('SPS_Shipping_Matcher')) return $packages;
@@ -433,6 +432,7 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
     // Cria o conteúdo do pacote único
     $contents = [];
     $total_cost = 0;
+    $volumes = []; // Array para armazenar todos os volumes
 
     // Adiciona itens de grupos ao pacote
     foreach ($result['group_items'] as $group_item) {
@@ -448,16 +448,21 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
                     $item_clone = $cart_item;
                     $item_clone['quantity'] = $total_qty_needed;
                     
-                    // Define as dimensões do grupo no produto
-                    if (is_object($item_clone['data'])) {
-                        $item_clone['data']->set_weight($result['total_weight']);
-                        $item_clone['data']->set_height($result['total_height']);
-                        $item_clone['data']->set_width($result['total_width']);
-                        $item_clone['data']->set_length($result['total_length']);
-                    }
-                    
+                    // Mantém as dimensões originais do produto para o volume
                     $contents[$cart_item_key . '_group_' . $group['id']] = $item_clone;
                     $total_cost += isset($item_clone['line_total']) ? $item_clone['line_total'] : 0;
+                    
+                    // Adiciona como volume
+                    $volumes[] = [
+                        'type' => 'group_item',
+                        'name' => 'Grupo ' . $group['id'] . ' - ' . $item_clone['data']->get_name(),
+                        'weight' => (float) $item_clone['data']->get_weight() * $total_qty_needed,
+                        'width' => (float) $item_clone['data']->get_width(),
+                        'height' => (float) $item_clone['data']->get_height(),
+                        'length' => (float) $item_clone['data']->get_length(),
+                        'quantity' => $total_qty_needed,
+                        'group_id' => $group['id']
+                    ];
                     break;
                 }
             }
@@ -472,45 +477,26 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
                 $item_clone = $cart_item;
                 $item_clone['quantity'] = $quantity;
                 
-                // Define as dimensões do pacote único no produto
-                if (is_object($item_clone['data'])) {
-                    $item_clone['data']->set_weight($result['total_weight']);
-                    $item_clone['data']->set_height($result['total_height']);
-                    $item_clone['data']->set_width($result['total_width']);
-                    $item_clone['data']->set_length($result['total_length']);
-                }
-                
                 $contents[$cart_item_key . '_individual'] = $item_clone;
                 $total_cost += isset($item_clone['line_total']) ? $item_clone['line_total'] : 0;
+                
+                // Adiciona como volume
+                $volumes[] = [
+                    'type' => 'individual_item',
+                    'name' => 'Individual - ' . $item_clone['data']->get_name(),
+                    'weight' => (float) $item_clone['data']->get_weight() * $quantity,
+                    'width' => (float) $item_clone['data']->get_width(),
+                    'height' => (float) $item_clone['data']->get_height(),
+                    'length' => (float) $item_clone['data']->get_length(),
+                    'quantity' => $quantity,
+                    'product_id' => $product_id
+                ];
                 break;
             }
         }
     }
 
-    // Cria o pacote único
-    $single_package = [
-        'contents'        => $contents,
-        'contents_cost'   => $total_cost,
-        'applied_coupons' => WC()->cart->get_applied_coupons(),
-        'user'            => ['ID' => get_current_user_id()],
-        'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-        'sps_single_package' => true,
-        'sps_pacote'      => "Pacote Único",
-        'package_weight'  => $result['total_weight'],
-        'package_height'  => $result['total_height'],
-        'package_length'  => $result['total_length'],
-        'package_width'   => $result['total_width'],
-        'sps_group_items' => $result['group_items'],
-        'sps_individual_items' => $result['individual_items'],
-        'sps_items_detail' => $result['items'],
-    ];
-
-    $final_packages = [$single_package];
-
     // Verificar se há produtos com múltiplos pacotes físicos
-    $multi_packages_data = [];
-    $has_multi_packages = false;
-
     foreach ($cart as $cart_item_key => $cart_item) {
         $product_id = $cart_item['product_id'];
         $quantity = $cart_item['quantity'];
@@ -520,68 +506,39 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
             $packages_config = CDP_Multi_Packages::get_packages_for_shipping($product_id, $quantity);
             
             if (!empty($packages_config)) {
-                $has_multi_packages = true;
-                $multi_packages_data[$cart_item_key] = [
-                    'product_id' => $product_id,
-                    'quantity' => $quantity,
-                    'packages' => $packages_config,
-                    'cart_item' => $cart_item
-                ];
-            }
-        }
-    }
-
-    // Se há produtos com múltiplos pacotes, criar pacotes adicionais
-    if ($has_multi_packages && !empty($multi_packages_data)) {
-        foreach ($multi_packages_data as $cart_item_key => $item_data) {
-            foreach ($item_data['packages'] as $package_index => $package_config) {
-                // Criar item virtual para cada pacote
-                $virtual_item = $item_data['cart_item'];
-                $virtual_item['data'] = clone $virtual_item['data'];
-                
-                // Definir as dimensões e peso do pacote
-                if (is_object($virtual_item['data'])) {
-                    $virtual_item['data']->set_width($package_config['width']);
-                    $virtual_item['data']->set_height($package_config['height']);
-                    $virtual_item['data']->set_length($package_config['length']);
-                    $virtual_item['data']->set_weight($package_config['weight']);
-                    $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' - ' . $package_config['name']);
-                }
-                
-                // Criar pacote individual
-                $multi_package = [
-                    'contents'        => [$cart_item_key . '_package_' . $package_index => $virtual_item],
-                    'contents_cost'   => isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0,
-                    'applied_coupons' => WC()->cart->get_applied_coupons(),
-                    'user'            => ['ID' => get_current_user_id()],
-                    'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-                    'sps_multi_package' => true,
-                    'sps_pacote'      => $package_config['name'],
-                    'package_weight'  => $package_config['weight'],
-                    'package_height'  => $package_config['height'],
-                    'package_length'  => $package_config['length'],
-                    'package_width'   => $package_config['width'],
-                    'sps_multi_package_data' => [
-                        'product_id' => $item_data['product_id'],
+                foreach ($packages_config as $package_index => $package_config) {
+                    // Adicionar cada pacote como volume
+                    $volumes[] = [
+                        'type' => 'multi_package',
+                        'name' => $package_config['name'] . ' - ' . $cart_item['data']->get_name(),
+                        'weight' => (float) $package_config['weight'],
+                        'width' => (float) $package_config['width'],
+                        'height' => (float) $package_config['height'],
+                        'length' => (float) $package_config['length'],
+                        'quantity' => 1,
+                        'product_id' => $product_id,
                         'package_name' => $package_config['name'],
                         'package_description' => isset($package_config['description']) ? $package_config['description'] : '',
                         'package_index' => $package_index
-                    ],
-                ];
-                
-                $final_packages[] = $multi_package;
-                
-                $description_log = !empty($package_config['description']) ? ' - Descrição: ' . $package_config['description'] : '';
-                error_log('SPS: Pacote múltiplo criado - ' . $package_config['name'] . ' - Peso: ' . $package_config['weight'] . 'kg, Dimensões: ' . 
-                          $package_config['height'] . 'x' . $package_config['width'] . 'x' . $package_config['length'] . 'cm' . $description_log);
+                    ];
+                    
+                    // Adicionar ao conteúdo do pacote único
+                    $virtual_item = $cart_item;
+                    $virtual_item['data'] = clone $virtual_item['data'];
+                    if (is_object($virtual_item['data'])) {
+                        $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' - ' . $package_config['name']);
+                    }
+                    $contents[$cart_item_key . '_package_' . $package_index] = $virtual_item;
+                    
+                    $description_log = !empty($package_config['description']) ? ' - Descrição: ' . $package_config['description'] : '';
+                    error_log('SPS: Volume múltiplo adicionado - ' . $package_config['name'] . ' - Peso: ' . $package_config['weight'] . 'kg, Dimensões: ' . 
+                              $package_config['height'] . 'x' . $package_config['width'] . 'x' . $package_config['length'] . 'cm' . $description_log);
+                }
             }
         }
     }
 
-    // Verificar se há produtos com dimensões personalizadas para criar pacote adicional
-    $custom_dimensions_data = [];
-    $has_custom_dimensions = false;
-
+    // Verificar se há produtos com dimensões personalizadas para adicionar como volumes
     foreach ($cart as $cart_item_key => $cart_item) {
         if (isset($cart_item['cdp_custom_dimensions'])) {
             $custom_data = $cart_item['cdp_custom_dimensions'];
@@ -602,8 +559,6 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
             $extra_length = max(0, (float) $custom_data['length'] - $base_length);
             
             if ($extra_width > 0 || $extra_height > 0 || $extra_length > 0) {
-                $has_custom_dimensions = true;
-                
                 // Calcular peso usando fator multiplicativo baseado no volume
                 $base_weight = (float) $product->get_weight();
                 $base_volume = $base_width * $base_height * $base_length;
@@ -618,194 +573,134 @@ add_filter('woocommerce_cart_shipping_packages', function($packages) {
                     $extra_weight = 0;
                 }
                 
-                $custom_dimensions_data[] = [
-                    'cart_item_key' => $cart_item_key,
-                    'product_id' => $product_id,
+                // Adicionar dimensões extras como volume
+                $volumes[] = [
+                    'type' => 'custom_dimensions',
+                    'name' => 'Dimensões Extras - ' . $cart_item['data']->get_name(),
+                    'weight' => (float) $extra_weight * $quantity,
+                    'width' => (float) $extra_width,
+                    'height' => (float) $extra_height,
+                    'length' => (float) $extra_length,
                     'quantity' => $quantity,
+                    'product_id' => $product_id,
                     'extra_width' => $extra_width,
                     'extra_height' => $extra_height,
                     'extra_length' => $extra_length,
-                    'extra_weight' => $extra_weight,
-                    'cart_item' => $cart_item
+                    'extra_weight' => $extra_weight
                 ];
+                
+                // Adicionar ao conteúdo do pacote único
+                $virtual_item = $cart_item;
+                $virtual_item['data'] = clone $virtual_item['data'];
+                if (is_object($virtual_item['data'])) {
+                    $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Dimensões Extras)');
+                }
+                $contents[$cart_item_key . '_custom'] = $virtual_item;
+                
+                error_log('SPS: Volume de dimensões extras adicionado - Peso: ' . ($extra_weight * $quantity) . 'kg, Dimensões: ' . 
+                          $extra_height . 'x' . $extra_width . 'x' . $extra_length . 'cm');
             }
         }
     }
 
-    // Se há dimensões personalizadas, criar pacote adicional
-    if ($has_custom_dimensions && !empty($custom_dimensions_data)) {
-        // Calcular dimensões totais do pacote adicional
-        $total_extra_width = 0;
-        $total_extra_height = 0;
-        $total_extra_length = 0;
-        $total_extra_weight = 0;
-        $custom_contents = [];
-        $custom_total_cost = 0;
-        
-        foreach ($custom_dimensions_data as $custom_item) {
-            // Somar dimensões extras (considerando quantidade)
-            $total_extra_width += $custom_item['extra_width'] * $custom_item['quantity'];
-            $total_extra_height += $custom_item['extra_height'] * $custom_item['quantity'];
-            $total_extra_length += $custom_item['extra_length'] * $custom_item['quantity'];
-            $total_extra_weight += $custom_item['extra_weight'] * $custom_item['quantity'];
-            
-            // Criar item virtual para o pacote adicional
-            $virtual_item = $custom_item['cart_item'];
-            $virtual_item['data'] = clone $virtual_item['data'];
-            
-            // Definir as dimensões extras como as dimensões do item virtual
-            if (is_object($virtual_item['data'])) {
-                $virtual_item['data']->set_width($custom_item['extra_width']);
-                $virtual_item['data']->set_height($custom_item['extra_height']);
-                $virtual_item['data']->set_length($custom_item['extra_length']);
-                $virtual_item['data']->set_weight($custom_item['extra_weight']);
-                $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Dimensões Extras)');
-            }
-            
-            $custom_contents[$custom_item['cart_item_key'] . '_custom'] = $virtual_item;
-            $custom_total_cost += isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0;
-        }
-        
-        // Criar pacote adicional
-        $custom_package = [
-            'contents'        => $custom_contents,
-            'contents_cost'   => $custom_total_cost,
-            'applied_coupons' => WC()->cart->get_applied_coupons(),
-            'user'            => ['ID' => get_current_user_id()],
-            'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-            'sps_custom_dimensions_package' => true,
-            'sps_pacote'      => "Pacote Dimensões Extras",
-            'package_weight'  => $total_extra_weight,
-            'package_height'  => $total_extra_height,
-            'package_length'  => $total_extra_length,
-            'package_width'   => $total_extra_width,
-            'sps_custom_dimensions_data' => $custom_dimensions_data,
-        ];
-        
-        $final_packages[] = $custom_package;
-        
-        error_log('SPS: Pacote de dimensões extras criado - Peso: ' . $total_extra_weight . 'kg, Dimensões: ' . 
-                  $total_extra_height . 'x' . $total_extra_width . 'x' . $total_extra_length . 'cm');
-    }
-
-    // Verificar se há produtos compostos para criar pacotes específicos
-    $composed_products_data = [];
-    $has_composed_products = false;
-
+    // Verificar se há produtos compostos para adicionar como volumes
     foreach ($cart as $cart_item_key => $cart_item) {
         $product_id = $cart_item['product_id'];
         $quantity = $cart_item['quantity'];
         
         // Verificar se é um produto composto
         if (get_post_meta($product_id, '_sps_product_type', true) === 'composed') {
-            $has_composed_products = true;
-            
             // Obter dados do produto composto
             $children = get_post_meta($product_id, '_sps_composed_children', true);
             $composition_policy = get_post_meta($product_id, '_sps_composition_policy', true);
             
             if (!empty($children)) {
-                $composed_products_data[$cart_item_key] = [
-                    'product_id' => $product_id,
-                    'quantity' => $quantity,
-                    'children' => $children,
-                    'composition_policy' => $composition_policy,
-                    'cart_item' => $cart_item
-                ];
-            }
-        }
-    }
-
-    // Se há produtos compostos, criar pacotes específicos
-    if ($has_composed_products && !empty($composed_products_data)) {
-        foreach ($composed_products_data as $cart_item_key => $composed_data) {
-            // Calcular dimensões base do produto composto
-            $composed_dimensions = SPS_Composed_Product::calculate_composed_dimensions(
-                $composed_data['children'], 
-                $composed_data['composition_policy']
-            );
-            
-            // Criar pacote principal do produto composto
-            $virtual_item = $composed_data['cart_item'];
-            $virtual_item['data'] = clone $virtual_item['data'];
-            
-            if (is_object($virtual_item['data'])) {
-                $virtual_item['data']->set_width($composed_dimensions['width']);
-                $virtual_item['data']->set_height($composed_dimensions['height']);
-                $virtual_item['data']->set_length($composed_dimensions['length']);
-                $virtual_item['data']->set_weight($composed_dimensions['weight']);
-                $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Produto Composto)');
-            }
-            
-            $composed_package = [
-                'contents'        => [$cart_item_key . '_composed' => $virtual_item],
-                'contents_cost'   => isset($virtual_item['line_total']) ? $virtual_item['line_total'] : 0,
-                'applied_coupons' => WC()->cart->get_applied_coupons(),
-                'user'            => ['ID' => get_current_user_id()],
-                'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-                'sps_composed_package' => true,
-                'sps_pacote'      => 'Produto Composto',
-                'package_weight'  => $composed_dimensions['weight'],
-                'package_height'  => $composed_dimensions['height'],
-                'package_length'  => $composed_dimensions['length'],
-                'package_width'   => $composed_dimensions['width'],
-                'sps_composed_data' => [
-                    'product_id' => $composed_data['product_id'],
-                    'children' => $composed_data['children'],
-                    'composition_policy' => $composed_data['composition_policy']
-                ],
-            ];
-            
-            $final_packages[] = $composed_package;
-            
-            // Verificar se há pacotes de excedente CDP para este produto composto
-            if (isset($composed_data['cart_item']['cdp_excess_packages'])) {
-                $excess_packages = $composed_data['cart_item']['cdp_excess_packages'];
+                // Calcular dimensões base do produto composto
+                $composed_dimensions = SPS_Composed_Product::calculate_composed_dimensions(
+                    $children, 
+                    $composition_policy
+                );
                 
-                foreach ($excess_packages as $excess_index => $excess_package) {
-                    $excess_virtual_item = $composed_data['cart_item'];
-                    $excess_virtual_item['data'] = clone $excess_virtual_item['data'];
+                // Adicionar produto composto como volume
+                $volumes[] = [
+                    'type' => 'composed_product',
+                    'name' => 'Produto Composto - ' . $cart_item['data']->get_name(),
+                    'weight' => (float) $composed_dimensions['weight'],
+                    'width' => (float) $composed_dimensions['width'],
+                    'height' => (float) $composed_dimensions['height'],
+                    'length' => (float) $composed_dimensions['length'],
+                    'quantity' => $quantity,
+                    'product_id' => $product_id,
+                    'children' => $children,
+                    'composition_policy' => $composition_policy
+                ];
+                
+                // Adicionar ao conteúdo do pacote único
+                $virtual_item = $cart_item;
+                $virtual_item['data'] = clone $virtual_item['data'];
+                if (is_object($virtual_item['data'])) {
+                    $virtual_item['data']->set_name($virtual_item['data']->get_name() . ' (Produto Composto)');
+                }
+                $contents[$cart_item_key . '_composed'] = $virtual_item;
+                
+                // Verificar se há pacotes de excedente CDP para este produto composto
+                if (isset($cart_item['cdp_excess_packages'])) {
+                    $excess_packages = $cart_item['cdp_excess_packages'];
                     
-                    if (is_object($excess_virtual_item['data'])) {
-                        $excess_virtual_item['data']->set_width($excess_package['width']);
-                        $excess_virtual_item['data']->set_height($excess_package['height']);
-                        $excess_virtual_item['data']->set_length($excess_package['length']);
-                        $excess_virtual_item['data']->set_weight($excess_package['weight']);
-                        $excess_virtual_item['data']->set_name($virtual_item['data']->get_name() . ' - Pacote Excedente ' . ($excess_index + 1));
-                    }
-                    
-                    $excess_package_data = [
-                        'contents'        => [$cart_item_key . '_excess_' . $excess_index => $excess_virtual_item],
-                        'contents_cost'   => 0, // Pacotes de excedente não têm custo adicional
-                        'applied_coupons' => WC()->cart->get_applied_coupons(),
-                        'user'            => ['ID' => get_current_user_id()],
-                        'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
-                        'sps_composed_excess_package' => true,
-                        'sps_pacote'      => 'Pacote Excedente CDP',
-                        'package_weight'  => $excess_package['weight'],
-                        'package_height'  => $excess_package['height'],
-                        'package_length'  => $excess_package['length'],
-                        'package_width'   => $excess_package['width'],
-                        'sps_composed_excess_data' => [
-                            'parent_product_id' => $composed_data['product_id'],
+                    foreach ($excess_packages as $excess_index => $excess_package) {
+                        // Adicionar pacote de excedente como volume
+                        $volumes[] = [
+                            'type' => 'composed_excess',
+                            'name' => 'Excedente CDP - ' . $cart_item['data']->get_name() . ' (' . ($excess_index + 1) . ')',
+                            'weight' => (float) $excess_package['weight'],
+                            'width' => (float) $excess_package['width'],
+                            'height' => (float) $excess_package['height'],
+                            'length' => (float) $excess_package['length'],
+                            'quantity' => 1,
+                            'product_id' => $product_id,
+                            'parent_product_id' => $product_id,
                             'excess_index' => $excess_index,
                             'excess_type' => $excess_package['type']
-                        ],
-                    ];
-                    
-                    $final_packages[] = $excess_package_data;
-                    
-                    error_log('SPS: Pacote de excedente CDP criado para produto composto - Peso: ' . $excess_package['weight'] . 'kg, Dimensões: ' . 
-                              $excess_package['height'] . 'x' . $excess_package['width'] . 'x' . $excess_package['length'] . 'cm');
+                        ];
+                        
+                        // Adicionar ao conteúdo do pacote único
+                        $excess_virtual_item = $cart_item;
+                        $excess_virtual_item['data'] = clone $excess_virtual_item['data'];
+                        if (is_object($excess_virtual_item['data'])) {
+                            $excess_virtual_item['data']->set_name($excess_virtual_item['data']->get_name() . ' - Excedente ' . ($excess_index + 1));
+                        }
+                        $contents[$cart_item_key . '_excess_' . $excess_index] = $excess_virtual_item;
+                        
+                        error_log('SPS: Volume de excedente CDP adicionado para produto composto - Peso: ' . $excess_package['weight'] . 'kg, Dimensões: ' . 
+                                  $excess_package['height'] . 'x' . $excess_package['width'] . 'x' . $excess_package['length'] . 'cm');
+                    }
                 }
+                
+                error_log('SPS: Volume composto adicionado - ID: ' . $product_id . ', Peso: ' . $composed_dimensions['weight'] . 'kg, Dimensões: ' . 
+                          $composed_dimensions['height'] . 'x' . $composed_dimensions['width'] . 'x' . $composed_dimensions['length'] . 'cm');
             }
-            
-            error_log('SPS: Produto composto processado - ID: ' . $composed_data['product_id'] . ', Peso: ' . $composed_dimensions['weight'] . 'kg, Dimensões: ' . 
-                      $composed_dimensions['height'] . 'x' . $composed_dimensions['width'] . 'x' . $composed_dimensions['length'] . 'cm');
         }
     }
 
-    return $final_packages;
+    // Criar o pacote único final
+    $single_package = [
+        'contents'        => $contents,
+        'contents_cost'   => $total_cost,
+        'applied_coupons' => WC()->cart->get_applied_coupons(),
+        'user'            => ['ID' => get_current_user_id()],
+        'destination'     => isset($packages[0]['destination']) ? $packages[0]['destination'] : [],
+        'sps_single_package' => true,
+        'sps_pacote'      => "Pacote Único com Múltiplos Volumes",
+        'package_weight'  => $result['total_weight'],
+        'package_height'  => $result['total_height'],
+        'package_length'  => $result['total_length'],
+        'package_width'   => $result['total_width'],
+        'sps_group_items' => $result['group_items'],
+        'sps_individual_items' => $result['individual_items'],
+        'sps_volumes'     => $volumes,
+    ];
+
+    return [$single_package];
 });
 
 // Salva a informação dos pacotes no pedido
